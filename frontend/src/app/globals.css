@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #ffffff;
+    --foreground: #0f172a;
+    /* slate-900 */
+    --card: #f8fafc;
+    /* slate-50 */
+    --card-foreground: #0f172a;
+    --border: #e2e8f0;
+    /* slate-200 */
+    --primary: #7748e6;
+    /* violet-500 */
+    --primary-foreground: #ffffff;
+    /* New variables for complete theme support */
+    --muted: #f1f5f9;
+    /* slate-100 */
+    --muted-foreground: #4c545f;
+    /* slate-500 */
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
+    --secondary: #f1f5f9;
+    --secondary-foreground: #0f172a;
+    --accent: #f1f5f9;
+    --accent-foreground: #0f172a;
+    --destructive: #ef4444;
+    /* red-500 */
+    --destructive-foreground: #ffffff;
+    --link: #3b82f6;
+    /* blue-500 */
+    --success: #22c55e;
+    /* green-500 */
+    --warning: #eab308;
+    /* yellow-500 */
+    --ring: #8b5cf6;
+  }
+
+  .dark {
+    --background: #0f172a;
+    /* slate-900 */
+    --foreground: #f8fafc;
+    /* slate-50 */
+    --card: #1e293b;
+    /* slate-800 */
+    --card-foreground: #f8fafc;
+    --border: #334155;
+    /* slate-700 */
+    --primary: #b8a0ff;
+    /* violet-400 */
+    --primary-foreground: #ffffff;
+    /* New variables for complete theme support */
+    --muted: #1e293b;
+    --muted-foreground: #dee2e7;
+    /* slate-300 */
+    --popover: #1e293b;
+    --popover-foreground: #f8fafc;
+    --secondary: #334155;
+    --secondary-foreground: #f8fafc;
+    --accent: #334155;
+    --accent-foreground: #f8fafc;
+    --destructive: #b91c1c;
+    /* red-700 */
+    --destructive-foreground: #ffffff;
+    --link: #60a5fa;
+    /* blue-400 */
+    --success: #4ade80;
+    /* green-400 */
+    --warning: #facc15;
+    /* yellow-400 */
+    --ring: #a78bfa;
+  }
+}
+
+body {
+  @apply bg-background text-foreground;
+}

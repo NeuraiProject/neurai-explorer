@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Block {
+  height     Int       @id
+  hash       String    @unique
+  time       Int
+  difficulty Decimal?  @db.Decimal
+  txCount    Int?      @map("tx_count")
+  rawData    Json?     @map("raw_data")
+
+  transactions Transaction[]
+
+  @@index([time(sort: Desc)], name: "idx_blocks_time")
+  @@map("blocks")
+}
+
+model Transaction {
+  txid        String   @id
+  blockHeight Int?     @map("block_height")
+  time        Int?
+  totalOutput Decimal? @map("total_output") @db.Decimal
+  rawData     Json?    @map("raw_data")
+
+  block       Block?   @relation(fields: [blockHeight], references: [height], onDelete: Cascade)
+  txAddresses TxAddress[]
+
+  @@index([blockHeight], name: "idx_tx_height")
+  @@map("transactions")
+}
+
+model Address {
+  address       String  @id
+  balance       Decimal @default(0) @db.Decimal
+  totalReceived Decimal @default(0) @map("total_received") @db.Decimal
+  totalSent     Decimal @default(0) @map("total_sent") @db.Decimal
+  txCount       Int     @default(0) @map("tx_count")
+
+  txAddresses   TxAddress[]
+  addressAssets AddressAsset[]
+
+  @@index([balance(sort: Desc)], name: "idx_addr_balance")
+  @@map("addresses")
+}
+
+model TxAddress {
+  txid        String
+  address     String
+  blockHeight Int?   @map("block_height")
+  time        Int?
+
+  transaction Transaction @relation(fields: [txid], references: [txid], onDelete: Cascade)
+  addressRef  Address     @relation(fields: [address], references: [address], onDelete: Cascade)
+
+  @@id([txid, address])
+  @@index([address], name: "idx_txaddr_address")
+  @@index([time(sort: Desc)], name: "idx_txaddr_time")
+  @@map("tx_addresses")
+}
+
+model SyncState {
+  key   String  @id
+  value String?
+
+  @@map("sync_state")
+}
+
+model NetworkStats {
+  id           Int      @id @default(1)
+  difficulty   Decimal? @db.Decimal
+  hashrate     Decimal? @db.Decimal
+  connections  Int?
+  height       Int?
+  supply       Decimal? @db.Decimal
+  priceUsd     Decimal? @map("price_usd") @db.Decimal
+  marketCapUsd Decimal? @map("market_cap_usd") @db.Decimal
+  peersData    Json?    @map("peers_data")
+  updatedAt    Int?     @map("updated_at")
+
+  @@map("network_stats")
+}
+
+model Mempool {
+  txid    String @id
+  time    Int?
+  rawData Json?  @map("raw_data")
+
+  @@index([time(sort: Desc)], name: "idx_mempool_time")
+  @@map("mempool")
+}
+
+model Asset {
+  name        String   @id
+  type        String?
+  amount      Decimal? @db.Decimal
+  units       Int?
+  reissuable  Boolean?
+  hasIpfs     Boolean? @map("has_ipfs")
+  ipfsHash    String?  @map("ipfs_hash")
+  blockHeight Int?     @map("block_height")
+  txid        String?
+
+  addressAssets AddressAsset[]
+
+  @@index([name], name: "idx_assets_name")
+  @@map("assets")
+}
+
+model AddressAsset {
+  address   String
+  assetName String  @map("asset_name")
+  balance   Decimal @default(0) @db.Decimal
+
+  addressRef Address @relation(fields: [address], references: [address], onDelete: Cascade)
+  asset      Asset   @relation(fields: [assetName], references: [name], onDelete: Cascade)
+
+  @@id([address, assetName])
+  @@index([assetName, balance(sort: Desc)], name: "idx_addr_asset_bal")
+  @@map("address_assets")
+}
+
+model DailyStats {
+  date               DateTime @id @db.Date
+  txCount            Int      @default(0) @map("tx_count")
+  totalOutput        Decimal  @default(0) @map("total_output") @db.Decimal
+  sumDifficulty      Decimal  @default(0) @map("sum_difficulty") @db.Decimal
+  blockCount         Int      @default(0) @map("block_count")
+  newAssetsCount     Int      @default(0) @map("new_assets_count")
+  activeAddressCount Int      @default(0) @map("active_address_count")
+  burnedCoins        Decimal  @default(0) @map("burned_coins") @db.Decimal
+  sumBlockSize       BigInt   @default(0) @map("sum_block_size")
+  newSupply          Decimal  @default(0) @map("new_supply") @db.Decimal
+
+  @@map("daily_stats")
+}

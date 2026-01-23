@@ -1,0 +1,108 @@
+-- Initial migration to create the schema equivalent to schema.prisma
+
+-- Blocks table
+CREATE TABLE IF NOT EXISTS blocks (
+    height INTEGER PRIMARY KEY,
+    hash TEXT UNIQUE NOT NULL,
+    time INTEGER NOT NULL,
+    difficulty DECIMAL,
+    tx_count INTEGER,
+    raw_data JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_blocks_time ON blocks (time DESC);
+
+-- Transactions table
+CREATE TABLE IF NOT EXISTS transactions (
+    txid TEXT PRIMARY KEY,
+    block_height INTEGER REFERENCES blocks(height) ON DELETE CASCADE,
+    time INTEGER,
+    total_output DECIMAL,
+    raw_data JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_tx_height ON transactions (block_height);
+
+-- Addresses table
+CREATE TABLE IF NOT EXISTS addresses (
+    address TEXT PRIMARY KEY,
+    balance DECIMAL NOT NULL DEFAULT 0,
+    total_received DECIMAL NOT NULL DEFAULT 0,
+    total_sent DECIMAL NOT NULL DEFAULT 0,
+    tx_count INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_addr_balance ON addresses (balance DESC);
+
+-- TxAddress mapping table
+CREATE TABLE IF NOT EXISTS tx_addresses (
+    txid TEXT REFERENCES transactions(txid) ON DELETE CASCADE,
+    address TEXT REFERENCES addresses(address) ON DELETE CASCADE,
+    block_height INTEGER,
+    time INTEGER,
+    PRIMARY KEY (txid, address)
+);
+CREATE INDEX IF NOT EXISTS idx_txaddr_address ON tx_addresses (address);
+CREATE INDEX IF NOT EXISTS idx_txaddr_time ON tx_addresses (time DESC);
+
+-- Sync State table
+CREATE TABLE IF NOT EXISTS sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
+-- Network Stats table
+CREATE TABLE IF NOT EXISTS network_stats (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    difficulty DECIMAL,
+    hashrate DECIMAL,
+    connections INTEGER,
+    height INTEGER,
+    supply DECIMAL,
+    price_usd DECIMAL,
+    market_cap_usd DECIMAL,
+    peers_data JSONB,
+    updated_at INTEGER
+);
+
+-- Mempool table
+CREATE TABLE IF NOT EXISTS mempool (
+    txid TEXT PRIMARY KEY,
+    time INTEGER,
+    raw_data JSONB
+);
+CREATE INDEX IF NOT EXISTS idx_mempool_time ON mempool (time DESC);
+
+-- Assets table
+CREATE TABLE IF NOT EXISTS assets (
+    name TEXT PRIMARY KEY,
+    type TEXT,
+    amount DECIMAL,
+    units INTEGER,
+    reissuable BOOLEAN,
+    has_ipfs BOOLEAN,
+    ipfs_hash TEXT,
+    block_height INTEGER,
+    txid TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_assets_name ON assets (name);
+
+-- Address Assets mapping table
+CREATE TABLE IF NOT EXISTS address_assets (
+    address TEXT REFERENCES addresses(address) ON DELETE CASCADE,
+    asset_name TEXT REFERENCES assets(name) ON DELETE CASCADE,
+    balance DECIMAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (address, asset_name)
+);
+CREATE INDEX IF NOT EXISTS idx_addr_asset_bal ON address_assets (asset_name, balance DESC);
+
+-- Daily Stats table
+CREATE TABLE IF NOT EXISTS daily_stats (
+    date DATE PRIMARY KEY,
+    tx_count INTEGER NOT NULL DEFAULT 0,
+    total_output DECIMAL NOT NULL DEFAULT 0,
+    sum_difficulty DECIMAL NOT NULL DEFAULT 0,
+    block_count INTEGER NOT NULL DEFAULT 0,
+    new_assets_count INTEGER NOT NULL DEFAULT 0,
+    active_address_count INTEGER NOT NULL DEFAULT 0,
+    burned_coins DECIMAL NOT NULL DEFAULT 0,
+    sum_block_size BIGINT NOT NULL DEFAULT 0,
+    new_supply DECIMAL NOT NULL DEFAULT 0
+);

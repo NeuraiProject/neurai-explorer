@@ -1,0 +1,68 @@
+{
+    "api": {
+        "baseUrl": "/api",
+        "timeout": 10000,
+        "retryAttempts": 3,
+        "retryDelay": 1000
+    },
+    "site": {
+        "title": "Neurai Explorer",
+        "description": "Explorer for Neurai Blockchain",
+        "coinSymbol": "XNA",
+        "coinName": "Neurai",
+        "logoPath": "/neurai-logo.png",
+        "logoAlt": "Neurai Logo",
+        "socials": [
+            {
+                "label": "Website",
+                "href": "https://neurai.org",
+                "icon": "FaGlobe"
+            },
+            {
+                "label": "X",
+                "href": "https://twitter.com/neuraiproject",
+                "icon": "FaXTwitter"
+            },
+            {
+                "label": "Reddit",
+                "href": "https://www.reddit.com/r/neuraiproject",
+                "icon": "FaRedditAlien"
+            },
+            {
+                "label": "Telegram",
+                "href": "https://t.me/neuraiproject",
+                "icon": "FaTelegram"
+            },
+            {
+                "label": "Discord",
+                "href": "https://discord.gg/neurai-project-1062678996208336896",
+                "icon": "FaDiscord"
+            }
+        ]
+    },
+    "ui": {
+        "pollingInterval": 10000,
+        "itemsPerPage": 50,
+        "richListLimit": 100,
+        "latestTxsLimit": 20,
+        "chartHeight": 300,
+        "pagination": {
+            "defaultLimit": 20,
+            "maxLimit": 100,
+            "homepageLimit": 10
+        }
+    },
+    "thresholds": {
+        "amountColors": {
+            "high": 50000000,
+            "medium": 10000000,
+            "low": 1000000
+        }
+    },
+    "security": {
+        "rateLimit": {
+            "windowMs": 60000,
+            "maxRequests": 100
+        }
+    }
+}
