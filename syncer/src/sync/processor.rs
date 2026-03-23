@@ -126,17 +126,19 @@ impl<'a> BlockProcessor<'a> {
             enriched.vin[i].addresses = Some(vec![addr.clone()]);
             enriched.vin[i].value = Some(val);
 
+            // Standard XNA Debit
             if val > 0.0 {
-                // Standard XNA Debit
                 AddressesRepository::upsert_debit_tx(db_tx, addr, val).await?;
+            }
 
-                // Asset Debit
-                if let Some(ref asset) = prev_out.script_pub_key.asset {
-                    AddressAssetsRepository::upsert_debit_tx(db_tx, addr, &asset.name, asset.amount)
-                        .await?;
-                }
+            // Asset Debit (must be independent of val — asset outputs can have val=0)
+            if let Some(ref asset) = prev_out.script_pub_key.asset {
+                AddressAssetsRepository::upsert_debit_tx(db_tx, addr, &asset.name, asset.amount)
+                    .await?;
+            }
 
-                // Index for History
+            // Index for History
+            if val > 0.0 || prev_out.script_pub_key.asset.is_some() {
                 self.insert_tx_address(db_tx, &transaction.txid, addr, block).await?;
             }
         }

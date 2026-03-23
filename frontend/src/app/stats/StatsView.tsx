@@ -82,7 +82,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                 <Tooltip
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
-                                    formatter={(value: number | undefined) => value ? `${(value / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 2 })} M` : '0'}
+                                    formatter={(value) => typeof value === 'number' && value ? `${(value / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 2 })} M` : '0'}
                                 />
                                 <Area type="monotone" dataKey="total_output" name="Volume (XNA)" stroke="#10b981" fill="#10b981" fillOpacity={0.2} />
                             </AreaChart>
@@ -101,7 +101,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                 <Tooltip
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
-                                    formatter={(value: number | undefined) => value ? value.toFixed(2) : '0'}
+                                    formatter={(value) => typeof value === 'number' && value ? value.toFixed(2) : '0'}
                                 />
                                 <Line type="monotone" dataKey="avg_difficulty" name="Difficulty" stroke="#f59e0b" dot={false} strokeWidth={2} />
                             </LineChart>
@@ -120,7 +120,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                 <Tooltip
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
-                                    formatter={(value: number | undefined) => value ? `${value.toFixed(2)} TH/s` : '0'}
+                                    formatter={(value) => typeof value === 'number' && value ? `${value.toFixed(2)} TH/s` : '0'}
                                 />
                                 <Area type="monotone" dataKey="hashrate" name="Hashrate" stroke="#ec4899" fill="#ec4899" fillOpacity={0.2} />
                             </AreaChart>
@@ -157,7 +157,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                 <Tooltip
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
-                                    formatter={(value: number | undefined) => value ? Math.round(value).toLocaleString('en-US') : '0'}
+                                    formatter={(value) => typeof value === 'number' && value ? Math.round(value).toLocaleString('en-US') : '0'}
                                 />
                                 <Line type="monotone" dataKey="avg_block_size" name="Avg Size" stroke="#14b8a6" dot={false} strokeWidth={2} />
                             </LineChart>
@@ -176,7 +176,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                 <Tooltip
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
-                                    formatter={(value: number | undefined) => value ? value.toFixed(2) : '0'}
+                                    formatter={(value) => typeof value === 'number' && value ? value.toFixed(2) : '0'}
                                 />
                                 <Area type="monotone" dataKey="avg_tx_value" name="Avg Value" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
                             </AreaChart>
@@ -198,7 +198,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                 <Tooltip
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
-                                    formatter={(value: number | undefined) => value ? `${(value / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 2 })} M` : '0'}
+                                    formatter={(value) => typeof value === 'number' && value ? `${(value / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 2 })} M` : '0'}
                                 />
                                 <Area type="monotone" dataKey="supply" name="Supply" stroke="#eab308" fill="#eab308" fillOpacity={0.1} />
                             </AreaChart>
