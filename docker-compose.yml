@@ -87,11 +87,19 @@ services:
       - checkpoint_completion_target=0.9
       - -c
       - wal_compression=lz4
+      # Bulk inserts stall on WALWrite with the automatic 16MB buffer.
+      - -c
+      - wal_buffers=${PG_WAL_BUFFERS:-64MB}
+    # With a large shared_buffers/max_wal_size the shutdown checkpoint (and a
+    # crash recovery after a killed container) can take minutes: give it time
+    # to stop cleanly, and do not declare it unhealthy while it recovers.
+    stop_grace_period: 5m
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10m
     volumes:
       # postgres:18 images keep the cluster in /var/lib/postgresql/18/docker
       # (PGDATA) and declare /var/lib/postgresql as the volume; mounting the
