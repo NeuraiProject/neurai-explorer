@@ -1,63 +1,30 @@
-import prisma from "@/lib/db";
 import { Card } from "@/components/ui/Card";
 import { TxIdDisplay } from "@/components/TxIdDisplay";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Asset } from "@/types"; // We will map the DB result to this interface
-import { formatAmount } from "@/lib/utils";
+import { getAssetData, type AssetData } from "@/lib/services/asset";
+import { formatAmount, formatDate, formatSats, satsOf } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
-interface Holder {
-    address: string;
-    balance: string;
-}
+const ZERO = BigInt(0);
 
 export default async function AssetPage({ params }: { params: Promise<{ name: string }> }) {
     const { name } = await params;
     const assetName = decodeURIComponent(name);
 
-    let assetData: Asset | null = null;
-    let holders: Holder[] = [];
-
+    let data: AssetData | null = null;
     try {
-        const [asset, holdersRes] = await Promise.all([
-            prisma.asset.findUnique({ where: { name: assetName } }),
-            prisma.addressAsset.findMany({
-                where: { assetName },
-                orderBy: { balance: 'desc' },
-                select: { address: true, balance: true }
-            })
-        ]);
-
-        if (asset) {
-            assetData = {
-                name: asset.name,
-                amount: asset.amount?.toString() ?? '0',
-                units: asset.units ?? 0,
-                reissuable: asset.reissuable ?? false,
-                hasIpfs: asset.hasIpfs ?? false,
-                ipfsHash: asset.ipfsHash || undefined, // Map null to undefined to match interface
-                txid: asset.txid || "",
-                blockHeight: asset.blockHeight ?? 0,
-                type: asset.type ?? "asset", // Default type if missing
-                // Add missing properties from interface if not present in DB result, or map optional ones
-            };
-
-            // Note: Our Asset interface in types/index.ts uses 'ipfsHash', but the page code used 'ipfs_hash'
-            // We need to either update the interface or the code using it. 
-            // In types/index.ts: ipfsHash?: string;
-            // In this file usage: assetData.ipfs_hash
-            // I will update the usage in the rest of the file to match the interface property names (camelCase).
-
-            holders = holdersRes.map(h => ({
-                address: h.address,
-                balance: h.balance.toString()
-            }));
-        }
+        data = await getAssetData(assetName);
     } catch (e) {
         console.error("Error fetching asset:", e);
     }
+
+    const assetData = data?.asset ?? null;
+    const holders = data?.holders ?? [];
+    const holderCount = data?.holderCount ?? 0;
+    const events = data?.events ?? [];
+    const recent = data?.recent ?? [];
 
     if (!assetData) {
         return notFound();
@@ -120,7 +87,96 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                 )}
             </div>
 
-            <Card title={`Holders (${holders.length})`}>
+            <div className="grid gap-8 lg:grid-cols-2 mb-8">
+                <Card title={`Issuance history (${events.length})`}>
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-muted/50 sticky top-0">
+                                <tr className="border-b border-border">
+                                    <th className="px-4 py-3 font-medium text-muted-foreground">Block</th>
+                                    <th className="px-4 py-3 font-medium text-muted-foreground">Event</th>
+                                    <th className="px-4 py-3 font-medium text-muted-foreground text-right">Amount</th>
+                                    <th className="px-4 py-3 font-medium text-muted-foreground">Tx</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {events.map(ev => (
+                                    <tr key={`${ev.txid}:${ev.voutN}`} className="border-b border-border hover:bg-muted/50 transition-colors">
+                                        <td className="px-4 py-3 whitespace-nowrap">
+                                            <Link href={`/block/${ev.blockHeight}`} className="text-primary hover:underline font-mono">#{ev.blockHeight}</Link>
+                                            {ev.time ? <div className="text-xs text-muted-foreground">{formatDate(ev.time)}</div> : null}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <span className={`px-2 py-1 rounded-full text-xs font-bold ${ev.type === 'new_asset' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'}`}>
+                                                {ev.type === 'new_asset' ? 'Issued' : 'Reissued'}
+                                            </span>
+                                            {ev.ipfsHash ? <div className="text-xs font-mono text-muted-foreground truncate max-w-[180px]" title={ev.ipfsHash}>{ev.ipfsHash}</div> : null}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-mono whitespace-nowrap">
+                                            {formatAmount(ev.amount, { decimals: assetData.units, grouping: true })}
+                                        </td>
+                                        <td className="px-4 py-3 font-mono">
+                                            <Link href={`/tx/${ev.txid}`} className="text-primary hover:underline">
+                                                <TxIdDisplay txid={ev.txid} className="text-xs" />
+                                            </Link>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {events.length === 0 && (
+                                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No issuance events indexed.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+
+                <Card title="Recent movements">
+                    <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-muted/50 sticky top-0">
+                                <tr className="border-b border-border">
+                                    <th className="px-4 py-3 font-medium text-muted-foreground">Block</th>
+                                    <th className="px-4 py-3 font-medium text-muted-foreground">Address</th>
+                                    <th className="px-4 py-3 font-medium text-muted-foreground text-right">Amount</th>
+                                    <th className="px-4 py-3 font-medium text-muted-foreground">Tx</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {recent.map(mv => {
+                                    const sats = satsOf(mv.delta);
+                                    const cls = sats > ZERO ? 'text-green-600 dark:text-green-400' : sats < ZERO ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground';
+                                    const sign = sats > ZERO ? '+' : sats < ZERO ? '-' : '';
+                                    const abs = sats < ZERO ? -sats : sats;
+                                    return (
+                                        <tr key={`${mv.txid}:${mv.address}`} className="border-b border-border hover:bg-muted/50 transition-colors">
+                                            <td className="px-4 py-3 whitespace-nowrap">
+                                                {mv.blockHeight !== null ? <Link href={`/block/${mv.blockHeight}`} className="text-primary hover:underline font-mono">#{mv.blockHeight}</Link> : '—'}
+                                                {mv.time ? <div className="text-xs text-muted-foreground">{formatDate(mv.time)}</div> : null}
+                                            </td>
+                                            <td className="px-4 py-3 font-mono">
+                                                <Link href={`/address/${mv.address}`} className="text-primary hover:underline block truncate max-w-[220px]" title={mv.address}>{mv.address}</Link>
+                                            </td>
+                                            <td className={`px-4 py-3 text-right font-mono font-bold whitespace-nowrap ${cls}`}>
+                                                {sign}{formatSats(abs, { decimals: assetData.units, grouping: true })}
+                                            </td>
+                                            <td className="px-4 py-3 font-mono">
+                                                <Link href={`/tx/${mv.txid}`} className="text-primary hover:underline">
+                                                    <TxIdDisplay txid={mv.txid} className="text-xs" />
+                                                </Link>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {recent.length === 0 && (
+                                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">No movements indexed.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </Card>
+            </div>
+
+            <Card title={`Holders (${holderCount})${holderCount > holders.length ? ` · top ${holders.length}` : ''}`}>
                 <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-muted/50 sticky top-0">

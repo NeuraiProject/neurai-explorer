@@ -102,13 +102,15 @@ export default function ApiDocs() {
                 <div className="flex flex-col gap-8">
                     <ApiMethod
                         title="getmoneysupply"
-                        description="Returns current money supply"
+                        description="Returns the circulating supply as a decimal string."
                         links={[{ href: "/api/getmoneysupply", label: "/api/getmoneysupply" }]}
+                        note="Source: the node's UTXO set (gettxoutsetinfo.total_amount), refreshed by the syncer every 10 minutes; it may trail the chain tip by that much and differs slightly from the sum of indexed address balances (outputs without an address). While the node value is not available yet, the sum of indexed balances is returned instead. getsummary exposes the source and timestamp as supply_source / supply_updated_at."
                     />
                     <ApiMethod
                         title="getdistribution"
-                        description="Returns wealth distribution stats"
+                        description="Wealth distribution by richlist rank: addresses ranked 1-25, 26-50, 51-75, 76-100 and 101+, each with total (decimal string), count and percent of the supply."
                         links={[{ href: "/api/getdistribution", label: "/api/getdistribution" }]}
+                        note="Totals and counts come from the indexed addresses; percent uses the getmoneysupply value, so the five tiers may not add up to exactly 100%."
                     />
                     <ApiMethod
                         title="getaddress (/api/getaddress?address=hash)"
@@ -140,6 +142,11 @@ export default function ApiDocs() {
                         title="getcurrentprice"
                         description="Returns last known exchange price"
                         links={[{ href: "/api/getcurrentprice", label: "/api/getcurrentprice" }]}
+                    />
+                    <ApiMethod
+                        title="asset (/api/asset/name)"
+                        description="Asset metadata, holder count, top holders, issuance/reissuance history and latest movements (JSON, amounts as decimal strings)."
+                        links={[{ href: "/api/asset/NEURAI", label: "/api/asset/NEURAI" }]}
                     />
                     <ApiMethod
                         title="getbasicstats"

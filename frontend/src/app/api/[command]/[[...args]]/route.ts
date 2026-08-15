@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getBlockJson } from '@/lib/services/block';
+import { getDistribution, getSupply } from '@/lib/services/supply';
 
 // We removed rpcCall import. Everything must come from DB or external APIs (e.g. coingecko)
 
@@ -95,26 +96,13 @@ export async function GET(
 
             // --- Extended Commands (DB) ---
             case 'getmoneysupply': {
-                const result = await prisma.address.aggregate({ _sum: { balance: true } });
-                const supply = result._sum.balance || 0;
-                return new NextResponse(supply.toString(), { headers: { 'Content-Type': 'text/plain' } });
+                // UTXO-set supply from the node (via network_stats), see services/supply.ts
+                const { supply } = await getSupply();
+                return new NextResponse(supply, { headers: { 'Content-Type': 'text/plain' } });
             }
             case 'getdistribution': {
-                const addresses = await prisma.address.findMany({
-                    where: { balance: { gt: 0 } },
-                    select: { balance: true }
-                });
-                const balances = addresses.map(r => Number(r.balance));
-                const total = balances.reduce((a, b) => a + b, 0);
-                const distribution = {
-                    supply: total,
-                    t_1_25: { percent: 0, total: 0, count: 0 },
-                    t_26_50: { percent: 0, total: 0, count: 0 },
-                    t_51_75: { percent: 0, total: 0, count: 0 },
-                    t_76_100: { percent: 0, total: 0, count: 0 },
-                    t_101_plus: { percent: 0, total: 0, count: 0 }
-                };
-                return NextResponse.json(distribution);
+                // Richlist-rank tiers (Iquidus contract), aggregated in SQL
+                return NextResponse.json(await getDistribution());
             }
             case 'getaddress': {
                 const addr = args[0] || queryParams.address;
@@ -196,20 +184,19 @@ export async function GET(
             }
             case 'getbasicstats':
             case 'getsummary': {
-                const [stats, supplyResult, priceRes] = await Promise.all([
+                const [stats, supplyInfo, priceRes] = await Promise.all([
                     prisma.networkStats.findUnique({ where: { id: 1 } }),
-                    prisma.address.aggregate({ _sum: { balance: true } }),
+                    getSupply(),
                     fetch('https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd,btc').then(r => r.json()).catch(() => ({}))
                 ]);
-
-                // Exact decimal string (the source moves to network_stats.supply in a later change)
-                const supply = supplyResult._sum.balance?.toString() ?? '0';
 
                 return NextResponse.json({
                     blockcount: stats?.height || 0,
                     difficulty: Number(stats?.difficulty || 0),
                     networkGraph: Number(stats?.hashrate || 0),
-                    supply: supply,
+                    supply: supplyInfo.supply,
+                    supply_source: supplyInfo.source,
+                    supply_updated_at: supplyInfo.updatedAt,
                     connections: stats?.connections || 0,
                     price_btc: priceRes.neurai?.btc || 0,
                     price_usd: priceRes.neurai?.usd || 0
