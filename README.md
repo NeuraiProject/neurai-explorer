@@ -218,9 +218,25 @@ Sync tuning lives in `syncer/config.json` (rebuild the image after changing it):
 | `prefetchBatches` | 2 | Batches fetched ahead while the previous one is written |
 | `asyncCommit` | true | Commit batches with `synchronous_commit=off` (a crash only re-syncs the last batches; the database never ends up inconsistent) |
 | `supplyInterval` | 600000 | ms between `gettxoutsetinfo` calls (scans the node's whole UTXO set) |
+| `bulkModeThreshold` | 20000 | Blocks behind the tip from which the syncer runs in *bulk mode* (see below); 0 disables |
+| `indexBuildMem` | 512MB | `maintenance_work_mem` used to rebuild the deferred indexes |
 
 During the initial sync the log prints a `Sync progress` line every 10 s with
-the current height, blocks/s and an ETA.
+the current height, blocks/s, the share of time spent writing to PostgreSQL
+(`db_pct`) and an ETA.
+
+**Bulk mode.** While the database is more than `bulkModeThreshold` blocks
+behind the tip, the syncer drops the secondary indexes whose keys are random
+(`idx_txaddr_address_time`, `idx_txaa_*_height`, `idx_asset_events_name`,
+`idx_addr_balance`, `idx_addr_asset_bal`) and pauses autovacuum on the big
+tables — maintaining them insert by insert is most of the write cost of the
+initial load and nothing queries them yet. Primary keys and the `time` /
+`block_height` indexes stay. When it gets within the threshold it rebuilds
+the indexes in one go (a few minutes at most), re-enables autovacuum and
+analyzes the tables. What was dropped is recorded in `sync_state.bulk_mode`,
+so a restart at any point resumes correctly. While bulk mode is on,
+`/api/status` reports `initialSync: true` and the address, rich-list and asset
+holder pages are slow (sequential scans); the rest of the explorer works.
 
 ##### Database layout (schema v4)
 

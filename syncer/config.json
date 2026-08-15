@@ -10,7 +10,9 @@
         "blockFetchConcurrency": 16,
         "inputFetchConcurrency": 32,
         "prefetchBatches": 2,
-        "asyncCommit": true
+        "asyncCommit": true,
+        "bulkModeThreshold": 20000,
+        "indexBuildMem": "512MB"
     },
     "api": {
         "coingeckoUrl": "https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd",

@@ -116,6 +116,10 @@ impl<C: NodeClient> SyncEngine<C> {
             .await?
             .unwrap_or(-1);
 
+        // Bulk mode: far behind -> drop random-key secondary indexes and pause
+        // autovacuum; close to the tip (or at it) -> rebuild them.
+        self.update_bulk_mode(chain_height - db_height).await?;
+
         if db_height >= chain_height {
             return Ok(false);
         }
@@ -147,6 +151,23 @@ impl<C: NodeClient> SyncEngine<C> {
         self.catch_up(db_height + 1, chain_height, last_hash, bulk).await?;
 
         Ok(true)
+    }
+
+    /// Enter/leave bulk mode according to how far behind the tip we are.
+    async fn update_bulk_mode(&self, behind: i64) -> Result<()> {
+        let threshold = self.config.sync.bulk_mode_threshold;
+        if threshold <= 0 {
+            return Ok(());
+        }
+        let active = crate::db::bulk::state(&self.pool).await?.is_some();
+        if !active && behind >= threshold {
+            info!(behind, threshold, "Far behind the tip: entering bulk mode");
+            crate::db::bulk::enter(&self.pool).await?;
+        } else if active && behind < threshold {
+            info!(behind, threshold, "Close to the tip: leaving bulk mode");
+            crate::db::bulk::exit(&self.pool, &self.config.sync.index_build_mem).await?;
+        }
+        Ok(())
     }
 
     /// Fetch blocks `from..=to` from the node in batches (in a background task,
@@ -191,10 +212,12 @@ impl<C: NodeClient> SyncEngine<C> {
                     }
                 }
 
+                let write_started = Instant::now();
                 writer.write(&batch).await?;
+                let write_ms = write_started.elapsed().as_millis() as u64;
 
                 last_hash = Some(batch.last().hash.clone());
-                progress.record(&batch, &self.prev_out_cache);
+                progress.record(&batch, write_ms, &self.prev_out_cache);
 
                 if *self.shutdown_rx.borrow() {
                     break;
@@ -326,6 +349,8 @@ struct Progress {
     last_log: Instant,
     blocks_since_log: i64,
     txs_since_log: usize,
+    /// Time spent writing batches to the database since the last log line.
+    db_ms_since_log: u64,
     /// Bulk catch-up (throughput lines) vs. following the tip (one line per
     /// block).
     bulk: bool,
@@ -343,11 +368,12 @@ impl Progress {
             last_log: now,
             blocks_since_log: 0,
             txs_since_log: 0,
+            db_ms_since_log: 0,
             bulk,
         }
     }
 
-    fn record(&mut self, batch: &PreparedBatch, cache: &Mutex<PrevOutCache>) {
+    fn record(&mut self, batch: &PreparedBatch, write_ms: u64, cache: &Mutex<PrevOutCache>) {
         if !self.bulk {
             for block in &batch.blocks {
                 info!(height = block.height, hash = %block.hash, txs = block.tx.len(), "New block");
@@ -357,6 +383,7 @@ impl Progress {
 
         self.blocks_since_log += batch.blocks.len() as i64;
         self.txs_since_log += batch.tx_count();
+        self.db_ms_since_log += write_ms;
 
         let height = batch.last().height;
         let done = height >= self.target;
@@ -375,6 +402,9 @@ impl Progress {
             0
         };
         let cache_len = cache.lock().map(|c| c.len()).unwrap_or(0);
+        // Share of wall time spent waiting for the database (the rest is
+        // fetching from the node / waiting for the prefetcher).
+        let db_pct = (self.db_ms_since_log as f64 / (elapsed * 1000.0) * 100.0).min(100.0);
 
         info!(
             height,
@@ -382,6 +412,7 @@ impl Progress {
             remaining,
             blocks_per_sec = format!("{:.1}", rate),
             txs = self.txs_since_log,
+            db_pct = format!("{:.0}%", db_pct),
             eta = format!("{}h{:02}m", eta_secs / 3600, (eta_secs % 3600) / 60),
             prev_out_cache = cache_len,
             "Sync progress"
@@ -390,5 +421,6 @@ impl Progress {
         self.last_log = Instant::now();
         self.blocks_since_log = 0;
         self.txs_since_log = 0;
+        self.db_ms_since_log = 0;
     }
 }

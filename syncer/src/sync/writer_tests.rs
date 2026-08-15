@@ -261,6 +261,25 @@ async fn snapshot_legacy(pool: &PgPool, with_tx_count: bool) -> Vec<(String, Str
     rows
 }
 
+/// (name, definition) of every index in the public schema, sorted.
+async fn index_inventory(pool: &PgPool) -> Vec<(String, String)> {
+    let mut rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public' ORDER BY indexname",
+    ).fetch_all(pool).await.unwrap();
+    rows.sort();
+    rows
+}
+
+/// reloptions of the tables bulk mode touches (None = defaults).
+async fn autovacuum_options(pool: &PgPool) -> Vec<(String, Option<Vec<String>>)> {
+    let mut rows: Vec<(String, Option<Vec<String>>)> = sqlx::query_as(
+        "SELECT relname, reloptions FROM pg_class WHERE relnamespace = 'public'::regnamespace AND relkind = 'r' AND relname = ANY($1) ORDER BY relname",
+    ).bind(vec!["blocks","transactions","tx_addresses","tx_address_assets","asset_events","addresses","address_assets"])
+    .fetch_all(pool).await.unwrap();
+    rows.sort();
+    rows
+}
+
 /// Decimal as a normalized string (no trailing zeros), independent of the
 /// scale the driver decodes NUMERIC with.
 fn n(d: &BigDecimal) -> String {
@@ -784,6 +803,83 @@ async fn amounts_above_2_pow_53_sats_are_exact_end_to_end() {
     assert_eq!(n(&sent), "21000000000.12345678");
 }
 
+// ---------------------------------------------------------------------------
+// Bulk mode: deferred indexes / paused autovacuum during the initial sync
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+#[ignore]
+async fn bulk_mode_round_trip_restores_indexes_and_autovacuum() {
+    use crate::db::bulk;
+
+    let Some(pool) = test_pool().await else { return };
+    sqlx::query("DELETE FROM sync_state WHERE key = 'bulk_mode'").execute(&pool).await.unwrap();
+    // Start from a clean state in case a previous test aborted midway
+    bulk::exit(&pool, "64MB").await.unwrap();
+
+    let indexes_before = index_inventory(&pool).await;
+    let options_before = autovacuum_options(&pool).await;
+    assert!(indexes_before.iter().any(|(n, _)| n == "idx_txaddr_address_time"));
+    assert!(options_before.iter().all(|(_, o)| o.is_none()), "no reloptions expected initially");
+
+    // Enter: deferrable indexes gone, the rest untouched, autovacuum off, state recorded
+    let state = bulk::enter(&pool).await.unwrap();
+    assert_eq!(state.indexes.len(), 6, "{:?}", state.indexes);
+    assert_eq!(state.tables.len(), 7);
+    let during = index_inventory(&pool).await;
+    for gone in ["idx_txaddr_address_time", "idx_txaa_address_height", "idx_txaa_asset_height", "idx_asset_events_name", "idx_addr_balance", "idx_addr_asset_bal"] {
+        assert!(during.iter().all(|(n, _)| n != gone), "{} should be dropped", gone);
+    }
+    for kept in ["tx_addresses_pkey", "transactions_pkey", "idx_txaddr_time", "idx_txaddr_height", "idx_tx_time", "idx_tx_height_index", "idx_blocks_time", "blocks_hash_key"] {
+        assert!(during.iter().any(|(n, _)| n == kept), "{} must be kept", kept);
+    }
+    assert!(autovacuum_options(&pool).await.iter().all(|(_, o)| o.as_ref().is_some_and(|v| v.iter().any(|x| x == "autovacuum_enabled=false"))));
+    assert!(bulk::state(&pool).await.unwrap().is_some());
+
+    // Writing while in bulk mode works (PKs still there for ON CONFLICT)
+    BatchWriter::new(&pool, true).write(&prepare_offline(fixture_chain())).await.unwrap();
+
+    // Exit: everything back exactly as the migrations built it
+    bulk::exit(&pool, "64MB").await.unwrap();
+    assert_eq!(index_inventory(&pool).await, indexes_before);
+    assert_eq!(autovacuum_options(&pool).await, options_before);
+    assert!(bulk::state(&pool).await.unwrap().is_none());
+
+    // Idempotent
+    bulk::exit(&pool, "64MB").await.unwrap();
+    let again = bulk::enter(&pool).await.unwrap();
+    assert_eq!(again.indexes.len(), 6);
+    bulk::exit(&pool, "64MB").await.unwrap();
+    assert_eq!(index_inventory(&pool).await, indexes_before);
+}
+
+/// A crash between rebuilding two indexes leaves a state record with the
+/// remaining ones; the next exit finishes the job.
+#[tokio::test]
+#[ignore]
+async fn bulk_mode_exit_resumes_after_a_partial_rebuild() {
+    use crate::db::bulk;
+
+    let Some(pool) = test_pool().await else { return };
+    bulk::exit(&pool, "64MB").await.unwrap();
+    let indexes_before = index_inventory(&pool).await;
+
+    let mut state = bulk::enter(&pool).await.unwrap();
+    // Simulate: two indexes already rebuilt (recreate them by hand and drop
+    // them from the record), the process dies before the rest.
+    for done in state.indexes.drain(..2).collect::<Vec<_>>() {
+        sqlx::query(&done.def).execute(&pool).await.unwrap();
+    }
+    sqlx::query("UPDATE sync_state SET value = $1 WHERE key = 'bulk_mode'")
+        .bind(serde_json::to_string(&state).unwrap())
+        .execute(&pool).await.unwrap();
+
+    bulk::exit(&pool, "64MB").await.unwrap();
+    assert_eq!(index_inventory(&pool).await, indexes_before);
+    assert!(bulk::state(&pool).await.unwrap().is_none());
+    assert!(autovacuum_options(&pool).await.iter().all(|(_, o)| o.is_none()));
+}
+
 /// Synthetic chain shaped like Neurai mainnet (~1.1 tx per block: mostly
 /// coinbase-only blocks, some with a payout tx spending earlier coinbases).
 fn synthetic_chain(n_blocks: i64) -> Vec<Block> {
@@ -992,20 +1088,60 @@ mod engine {
         }
     }
 
-    fn test_config(batch_size: usize) -> Arc<Config> {
+    fn test_config(batch_size: usize, bulk_threshold: i64) -> Arc<Config> {
         Arc::new(Config {
             rpc: RpcConfig { user: "u".into(), pass: "p".into(), host: "mock".into(), port: 1, timeout: 1000, use_rest: false, retries: 1, retry_delay_ms: 1 },
             database: DatabaseConfig { user: "u".into(), pass: "p".into(), host: "db".into(), port: 5432, name: "n".into() },
-            sync: serde_json::from_value(json!({ "batchSize": batch_size, "prefetchBatches": 1, "blockFetchConcurrency": 4, "inputFetchConcurrency": 4 })).unwrap(),
+            sync: serde_json::from_value(json!({
+                "batchSize": batch_size, "prefetchBatches": 1, "blockFetchConcurrency": 4, "inputFetchConcurrency": 4,
+                "bulkModeThreshold": bulk_threshold, "indexBuildMem": "64MB"
+            })).unwrap(),
             api: ApiConfig { coingecko_url: String::new(), price_fetch_interval: 0 },
         })
     }
 
     fn engine(node: &Arc<MockNode>, pool: &PgPool, batch_size: usize) -> SyncEngine<MockNode> {
+        engine_with_bulk(node, pool, batch_size, 0)
+    }
+
+    fn engine_with_bulk(node: &Arc<MockNode>, pool: &PgPool, batch_size: usize, bulk_threshold: i64) -> SyncEngine<MockNode> {
         let (_tx, rx) = watch::channel(false);
         // keep the sender alive for the engine's lifetime by leaking it (test only)
         std::mem::forget(_tx);
-        SyncEngine::new(test_config(batch_size), Arc::clone(node), pool.clone(), rx)
+        SyncEngine::new(test_config(batch_size, bulk_threshold), Arc::clone(node), pool.clone(), rx)
+    }
+
+    /// Far behind -> the engine drops the deferrable indexes, syncs, and
+    /// rebuilds them when it reaches the tip; the result equals a plain sync.
+    #[tokio::test]
+    #[ignore]
+    async fn engine_uses_bulk_mode_during_a_long_catch_up() {
+        use crate::db::bulk;
+
+        let Some(pool) = test_pool().await else { return };
+        bulk::exit(&pool, "64MB").await.unwrap();
+        let indexes_before = index_inventory(&pool).await;
+
+        let mut chain = fixture_chain();
+        chain.extend(extension_blocks(&chain));
+        for h in 6..=40 {
+            let prev = chain.last().unwrap().hash.clone();
+            chain.push(coinbase_only(h, &prev, 0));
+        }
+        let node = Arc::new(MockNode::new(chain.clone()));
+
+        // threshold 10: 41 blocks behind -> bulk on; after the catch-up, 0 behind -> bulk off
+        let mut eng = engine_with_bulk(&node, &pool, 5, 10);
+        assert!(eng.step().await.unwrap());
+        assert!(bulk::state(&pool).await.unwrap().is_some(), "bulk mode should be active right after the catch-up");
+        assert!(index_inventory(&pool).await.iter().all(|(n, _)| n != "idx_addr_balance"));
+
+        assert!(!eng.step().await.unwrap(), "at the tip");
+        assert!(bulk::state(&pool).await.unwrap().is_none(), "bulk mode left at the tip");
+        assert_eq!(index_inventory(&pool).await, indexes_before);
+        assert!(autovacuum_options(&pool).await.iter().all(|(_, o)| o.is_none()));
+
+        assert_eq!(snapshot(&pool).await, fresh_sync_snapshot(&chain).await);
     }
 
     /// Reference state: what the writer produces for `blocks` synced in order.

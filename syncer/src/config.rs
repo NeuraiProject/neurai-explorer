@@ -121,6 +121,15 @@ pub struct SyncConfig {
     /// scans the whole UTXO set on the node.
     #[serde(default = "default_supply_interval")]
     pub supply_interval: u64,
+    /// When the database is at least this many blocks behind the tip, the
+    /// syncer enters "bulk mode": secondary indexes with random keys are
+    /// dropped and autovacuum paused on the big tables until it gets within
+    /// this distance again, when they are rebuilt. 0 disables it.
+    #[serde(default = "default_bulk_mode_threshold")]
+    pub bulk_mode_threshold: i64,
+    /// `maintenance_work_mem` used while rebuilding the deferred indexes.
+    #[serde(default = "default_index_build_mem")]
+    pub index_build_mem: String,
 }
 
 fn default_network_stats_interval() -> u64 {
@@ -165,6 +174,14 @@ fn default_async_commit() -> bool {
 
 fn default_supply_interval() -> u64 {
     600000
+}
+
+fn default_bulk_mode_threshold() -> i64 {
+    20_000
+}
+
+fn default_index_build_mem() -> String {
+    "512MB".to_string()
 }
 
 #[derive(Debug, Clone, Deserialize)]

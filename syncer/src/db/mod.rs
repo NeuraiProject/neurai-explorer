@@ -1,3 +1,4 @@
+pub mod bulk;
 mod pool;
 pub mod repositories;
 pub mod schema;

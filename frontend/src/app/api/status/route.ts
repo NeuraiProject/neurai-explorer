@@ -4,12 +4,15 @@ import prisma from '@/lib/db';
 export async function GET() {
     try {
         // Fetch network stats and latest block time in parallel
-        const [stats, lastBlock] = await Promise.all([
+        const [stats, lastBlock, bulkMode] = await Promise.all([
             prisma.networkStats.findFirst(),
             prisma.block.findFirst({
                 orderBy: { height: 'desc' },
                 select: { time: true, height: true },
             }),
+            // Present while the syncer runs its initial catch-up with the
+            // secondary indexes deferred (address/richlist pages are slow then).
+            prisma.syncState.findUnique({ where: { key: 'bulk_mode' }, select: { key: true } }),
         ]);
 
         const lastBlockTime = lastBlock?.time || 0;
@@ -39,8 +42,8 @@ export async function GET() {
                 gitCommit: "custom",
                 buildTime: new Date().toISOString(),
                 syncMode: true,
-                initialSync: false,
-                inSync: true,
+                initialSync: bulkMode !== null,
+                inSync: bulkMode === null,
                 bestHeight: explorerHeight,
                 lastBlockTime: new Date(lastBlockTime * 1000).toISOString(),
                 inSyncMempool: true,
