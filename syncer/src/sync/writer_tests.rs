@@ -71,8 +71,14 @@ fn out_exact(n: u32, value: &str, address: &str) -> serde_json::Value {
 }
 
 fn block(height: i64, prev: Option<&str>, txs: Vec<serde_json::Value>) -> Block {
+    block_variant(height, prev, txs, 0)
+}
+
+/// Same as `block` but with a hash that also depends on `variant`, to build
+/// competing versions of a height (reorgs).
+fn block_variant(height: i64, prev: Option<&str>, txs: Vec<serde_json::Value>, variant: u32) -> Block {
     let mut b = json!({
-        "hash": format!("{:064x}", height + 1),
+        "hash": format!("{:056x}{:08x}", height + 1, variant),
         "height": height,
         "version": 1, "versionHex": "00000001", "merkleroot": "00",
         "time": 1_700_000_000 + height * 60, "mediantime": 1_700_000_000 + height * 60,
@@ -332,7 +338,7 @@ async fn writer_produces_expected_ledger() {
     assert!(t3.contains(r#""asset":{"amount":"1.00000000","name":"TOKEN!"}"#), "{}", t3);
     assert!(!t1.contains(r#""asset""#), "plain XNA inputs have no asset: {}", t1);
 
-    assert_eq!(get(&snap, "block:3"), format!("{:064x} 1700000180 0.1 2", 4));
+    assert_eq!(get(&snap, "block:3"), format!("{:056x}{:08x} 1700000180 0.1 2", 4, 0));
     assert_eq!(get(&snap, "sync_state"), "3");
 }
 
@@ -927,4 +933,174 @@ async fn daily_stats_aggregation_runs_and_buckets_by_utc_day() {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM daily_stats").fetch_one(&pool).await.unwrap();
     assert_eq!(count, 1);
     assert_eq!(DailyStatsRepository::latest_date(&pool).await.unwrap(), Some(*date));
+}
+
+
+// ---------------------------------------------------------------------------
+// Sync engine against an in-memory node: fetching, reorg detection, rollback
+// ---------------------------------------------------------------------------
+
+mod engine {
+    use super::*;
+    use crate::config::{ApiConfig, Config, DatabaseConfig, RpcConfig};
+    use crate::error::{Result as SyncResult, SyncerError};
+    use crate::rpc::NodeClient;
+    use crate::sync::engine::SyncEngine;
+    use crate::types::Transaction;
+    use async_trait::async_trait;
+    use std::sync::Arc;
+    use tokio::sync::watch;
+
+    /// A node whose chain can be rewritten between steps.
+    pub struct MockNode {
+        chain: std::sync::Mutex<Vec<Block>>,
+        pub prev_tx_calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl MockNode {
+        fn new(chain: Vec<Block>) -> Self {
+            Self { chain: std::sync::Mutex::new(chain), prev_tx_calls: Default::default() }
+        }
+        /// Replace everything from `from` upwards with `blocks`.
+        fn reorg(&self, from: usize, blocks: Vec<Block>) {
+            let mut c = self.chain.lock().unwrap();
+            c.truncate(from);
+            c.extend(blocks);
+        }
+        fn blocks(&self) -> Vec<Block> {
+            self.chain.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl NodeClient for MockNode {
+        async fn get_block_count(&self) -> SyncResult<i64> {
+            Ok(self.chain.lock().unwrap().len() as i64 - 1)
+        }
+        async fn get_block_hash(&self, height: i64) -> SyncResult<String> {
+            self.chain.lock().unwrap().get(height as usize).map(|b| b.hash.clone())
+                .ok_or_else(|| SyncerError::RpcCall { method: "getblockhash".into(), code: -8, message: "Block height out of range".into() })
+        }
+        async fn get_block_by_height(&self, height: i64) -> SyncResult<Block> {
+            self.chain.lock().unwrap().get(height as usize).cloned()
+                .ok_or_else(|| SyncerError::RpcCall { method: "getblockhash".into(), code: -8, message: "Block height out of range".into() })
+        }
+        async fn get_prev_transaction(&self, txid: &str) -> SyncResult<Transaction> {
+            self.prev_tx_calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            self.chain.lock().unwrap().iter().flat_map(|b| b.tx.iter()).find(|t| t.txid == txid).cloned()
+                .ok_or_else(|| SyncerError::Http { status: 404, body: format!("{} not found", txid), retry_after_secs: None })
+        }
+    }
+
+    fn test_config(batch_size: usize) -> Arc<Config> {
+        Arc::new(Config {
+            rpc: RpcConfig { user: "u".into(), pass: "p".into(), host: "mock".into(), port: 1, timeout: 1000, use_rest: false, retries: 1, retry_delay_ms: 1 },
+            database: DatabaseConfig { user: "u".into(), pass: "p".into(), host: "db".into(), port: 5432, name: "n".into() },
+            sync: serde_json::from_value(json!({ "batchSize": batch_size, "prefetchBatches": 1, "blockFetchConcurrency": 4, "inputFetchConcurrency": 4 })).unwrap(),
+            api: ApiConfig { coingecko_url: String::new(), price_fetch_interval: 0 },
+        })
+    }
+
+    fn engine(node: &Arc<MockNode>, pool: &PgPool, batch_size: usize) -> SyncEngine<MockNode> {
+        let (_tx, rx) = watch::channel(false);
+        // keep the sender alive for the engine's lifetime by leaking it (test only)
+        std::mem::forget(_tx);
+        SyncEngine::new(test_config(batch_size), Arc::clone(node), pool.clone(), rx)
+    }
+
+    /// Reference state: what the writer produces for `blocks` synced in order.
+    async fn fresh_sync_snapshot(blocks: &[Block]) -> Vec<(String, String)> {
+        let pool = test_pool().await.unwrap();
+        for i in 0..blocks.len() {
+            let batch = prepare_offline_with(vec![blocks[i].clone()], &blocks[..i]);
+            BatchWriter::new(&pool, true).write(&batch).await.unwrap();
+        }
+        snapshot(&pool).await
+    }
+
+    fn coinbase_only(height: i64, prev: &str, variant: u32) -> Block {
+        block_variant(height, Some(prev), vec![coinbase_tx(&format!("cb{}v{}", height, variant), vec![out(0, 50000.0, Some("P"))])], variant)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn engine_syncs_a_fresh_chain_in_batches() {
+        let Some(pool) = test_pool().await else { return };
+        let mut chain = fixture_chain();
+        chain.extend(extension_blocks(&chain));
+        let node = Arc::new(MockNode::new(chain.clone()));
+
+        let mut eng = engine(&node, &pool, 2);
+        assert!(eng.step().await.unwrap(), "first step syncs");
+        assert!(!eng.step().await.unwrap(), "already at the tip");
+
+        assert_eq!(snapshot(&pool).await, fresh_sync_snapshot(&chain).await);
+        // Every previous output was in the batch or the cache: no node round trips
+        assert_eq!(node.prev_tx_calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn engine_handles_a_reorg_near_the_tip() {
+        let Some(pool) = test_pool().await else { return };
+        let chain = fixture_chain(); // heights 0..=3
+        let node = Arc::new(MockNode::new(chain.clone()));
+        engine(&node, &pool, 2).step().await.unwrap();
+        assert_eq!(get(&snapshot(&pool).await, "sync_state"), "3");
+
+        // Node replaces block 3 and adds two more; 3' spends E's coinbase (c3
+        // no longer exists) -> uses B's coinbase c1 instead.
+        let b3p = block_variant(3, Some(&chain[2].hash), vec![
+            coinbase_tx("c3p", vec![out(0, 50000.0, Some("Q"))]),
+            tx("s3p", vec![("c1", 0)], vec![out(0, 49999.0, Some("R"))]),
+        ], 1);
+        let b4p = coinbase_only(4, &b3p.hash, 1);
+        let b5p = coinbase_only(5, &b4p.hash, 1);
+        node.reorg(3, vec![b3p, b4p, b5p]);
+
+        // Fresh engine (empty cache): the spend of c1 must be resolved on the node
+        let mut eng = engine(&node, &pool, 2);
+        assert!(eng.step().await.unwrap());
+        assert!(!eng.step().await.unwrap());
+        assert!(node.prev_tx_calls.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+
+        assert_eq!(snapshot(&pool).await, fresh_sync_snapshot(&node.blocks()).await);
+        // The orphaned block is gone, its addresses too
+        let after = snapshot(&pool).await;
+        assert!(after.iter().all(|(k, _)| k != "addr:E"));
+        assert_eq!(get(&after, "sync_state"), "5");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn engine_handles_a_deep_reorg_far_from_the_tip() {
+        let Some(pool) = test_pool().await else { return };
+        let mut chain = fixture_chain();
+        chain.extend(extension_blocks(&chain)); // 0..=5
+        let node = Arc::new(MockNode::new(chain.clone()));
+        engine(&node, &pool, 3).step().await.unwrap();
+        assert_eq!(get(&snapshot(&pool).await, "sync_state"), "5");
+
+        // Fork at height 2 (below the near-tip check) and grow far past it,
+        // more than NEAR_TIP_WINDOW blocks, so only the previousblockhash
+        // link of the first batch can reveal the fork.
+        let mut new_blocks = vec![coinbase_only(2, &chain[1].hash, 7)];
+        for h in 3..=160 {
+            let prev = new_blocks.last().unwrap().hash.clone();
+            new_blocks.push(coinbase_only(h, &prev, 7));
+        }
+        node.reorg(2, new_blocks);
+
+        let mut eng = engine(&node, &pool, 50);
+        // step 1: fork detected via the link -> rollback to 2 ; step 2: resync
+        let mut steps = 0;
+        while eng.step().await.unwrap() {
+            steps += 1;
+            assert!(steps < 5, "engine did not converge");
+        }
+        assert!(steps >= 2, "expected a rollback step followed by a sync step, got {}", steps);
+
+        assert_eq!(snapshot(&pool).await, fresh_sync_snapshot(&node.blocks()).await);
+        assert_eq!(get(&snapshot(&pool).await, "sync_state"), "160");
+    }
 }

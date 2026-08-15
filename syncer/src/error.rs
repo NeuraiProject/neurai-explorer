@@ -8,6 +8,22 @@ pub enum SyncerError {
     #[error("RPC error: {0}")]
     Rpc(String),
 
+    /// Could not reach the node or the connection broke (timeout, refused,
+    /// reset). Retryable.
+    #[error("Node unreachable: {0}")]
+    Transport(String),
+
+    /// The node's HTTP server answered with a non-success status and no
+    /// JSON-RPC error object (e.g. 500 "Work queue depth exceeded", 429,
+    /// REST 404). Retryable for 5xx / 429 only.
+    #[error("Node HTTP {status}: {body}")]
+    Http {
+        status: u16,
+        body: String,
+        /// `Retry-After` header, in seconds, if the node sent one.
+        retry_after_secs: Option<u64>,
+    },
+
     #[error("RPC call '{method}' failed: {message} (code: {code})")]
     RpcCall {
         method: String,
@@ -18,8 +34,8 @@ pub enum SyncerError {
     #[error("Database error: {0}")]
     Database(#[from] sqlx::Error),
 
-    #[error("HTTP error: {0}")]
-    Http(#[from] reqwest::Error),
+    #[error("HTTP client error: {0}")]
+    HttpClient(#[from] reqwest::Error),
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
@@ -41,3 +57,17 @@ pub enum SyncerError {
 }
 
 pub type Result<T> = std::result::Result<T, SyncerError>;
+
+impl SyncerError {
+    /// Whether retrying the same node request a moment later can succeed:
+    /// transport failures, server-side overload/errors (5xx) and rate limiting
+    /// (429). Client errors (4xx), JSON-RPC errors and anything else are
+    /// deterministic and are not retried.
+    pub fn is_retryable(&self) -> bool {
+        match self {
+            SyncerError::Transport(_) => true,
+            SyncerError::Http { status, .. } => *status >= 500 || *status == 429,
+            _ => false,
+        }
+    }
+}

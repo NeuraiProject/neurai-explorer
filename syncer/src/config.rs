@@ -31,6 +31,8 @@ pub struct RpcConfigFile {
     pub port: Option<u16>,
     pub timeout: Option<u64>,
     pub use_rest: Option<bool>,
+    pub retries: Option<u32>,
+    pub retry_delay_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -52,6 +54,11 @@ pub struct RpcConfig {
     /// Fetch blocks and transactions through the node's REST interface
     /// (`-rest=1`) when it is available. Falls back to RPC automatically.
     pub use_rest: bool,
+    /// Attempts per node request for retryable failures (transport, 5xx,
+    /// 429). 1 = no retries.
+    pub retries: u32,
+    /// Base delay between attempts; doubles each time, with jitter.
+    pub retry_delay_ms: u64,
 }
 
 fn default_rpc_timeout() -> u64 {
@@ -227,6 +234,16 @@ impl ConfigFile {
                 "1" | "true" | "yes" | "on"
             ));
         }
+        if let Ok(retries) = std::env::var("RPC_RETRIES") {
+            if let Ok(retries) = retries.parse() {
+                self.rpc.retries = Some(retries);
+            }
+        }
+        if let Ok(delay) = std::env::var("RPC_RETRY_DELAY_MS") {
+            if let Ok(delay) = delay.parse() {
+                self.rpc.retry_delay_ms = Some(delay);
+            }
+        }
 
         if let Ok(url) = std::env::var("DATABASE_URL") {
             if let Some(parsed) = Self::parse_database_url(&url) {
@@ -271,6 +288,8 @@ impl RpcConfig {
         let port = raw.port.unwrap_or(19001);
         let timeout = raw.timeout.unwrap_or_else(default_rpc_timeout);
         let use_rest = raw.use_rest.unwrap_or(true);
+        let retries = raw.retries.unwrap_or(3).max(1);
+        let retry_delay_ms = raw.retry_delay_ms.unwrap_or(200);
 
         Ok(RpcConfig {
             user,
@@ -279,6 +298,8 @@ impl RpcConfig {
             port,
             timeout,
             use_rest,
+            retries,
+            retry_delay_ms,
         })
     }
 }

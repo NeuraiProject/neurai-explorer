@@ -8,7 +8,7 @@ mod types;
 use std::sync::Arc;
 use tokio::signal;
 use tokio::sync::watch;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 use crate::config::Config;
@@ -67,12 +67,14 @@ async fn main() -> Result<()> {
     // Create RPC client
     let mut rpc = RpcClient::new(&config.rpc)?;
 
-    // Test RPC connection
-    let block_count = rpc.get_block_count().await?;
+    // Wait for the node: right after `docker compose up` it is still loading
+    // its indexes (or in -reindex) and refuses RPC for a while.
+    let block_count = wait_for_node(&rpc).await;
     info!(block_count, "Connected to node");
 
     // Use the node's REST interface for block/tx fetches when available
     rpc.detect_rest().await;
+    info!(rest = rpc.uses_rest(), retries = config.rpc.retries, "Node client ready");
     let rpc = Arc::new(rpc);
 
     // Create shutdown channel
@@ -172,6 +174,29 @@ async fn main() -> Result<()> {
 
     info!("Shutdown complete");
     Ok(())
+}
+
+/// Poll `getblockcount` until the node answers. Waits forever (the process is
+/// stopped by SIGTERM/Ctrl+C in the meantime), logging every attempt so the
+/// operator sees why the syncer has not started yet.
+async fn wait_for_node(rpc: &RpcClient) -> i64 {
+    let mut attempt: u32 = 0;
+    loop {
+        match rpc.get_block_count().await {
+            Ok(count) => return count,
+            Err(e) => {
+                attempt += 1;
+                let wait_secs = std::cmp::min(30, 5 * attempt as u64);
+                warn!(
+                    attempt,
+                    error = %e,
+                    "Node not ready, retrying in {}s (RPC warmup / reindex, or check RPC_HOST/RPC_USER/RPC_PASS)",
+                    wait_secs
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(wait_secs)).await;
+            }
+        }
+    }
 }
 
 fn init_logging() {

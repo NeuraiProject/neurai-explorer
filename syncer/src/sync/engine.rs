@@ -10,7 +10,7 @@ use crate::config::Config;
 use crate::db::repositories::{BlocksRepository, SyncStateRepository};
 use crate::db::DbPool;
 use crate::error::{Result, SyncerError};
-use crate::rpc::RpcClient;
+use crate::rpc::NodeClient;
 use crate::types::Block;
 
 use super::cache::PrevOutCache;
@@ -30,18 +30,18 @@ const REORG_CHECK_DEPTH: i64 = 10;
 /// Deepest fork the syncer will roll back on its own.
 const MAX_REORG_DEPTH: i64 = 1_000;
 
-pub struct SyncEngine {
+pub struct SyncEngine<C: NodeClient> {
     config: Arc<Config>,
-    rpc: Arc<RpcClient>,
+    rpc: Arc<C>,
     pool: DbPool,
     shutdown_rx: watch::Receiver<bool>,
     prev_out_cache: Arc<Mutex<PrevOutCache>>,
 }
 
-impl SyncEngine {
+impl<C: NodeClient> SyncEngine<C> {
     pub fn new(
         config: Arc<Config>,
-        rpc: Arc<RpcClient>,
+        rpc: Arc<C>,
         pool: DbPool,
         shutdown_rx: watch::Receiver<bool>,
     ) -> Self {
@@ -61,7 +61,6 @@ impl SyncEngine {
             input_fetch_concurrency = self.config.sync.input_fetch_concurrency,
             prefetch_batches = self.config.sync.prefetch_batches,
             async_commit = self.config.sync.async_commit,
-            rest = self.rpc.uses_rest(),
             "Starting sync engine"
         );
 
@@ -71,20 +70,12 @@ impl SyncEngine {
                 break;
             }
 
-            match self.sync_iteration().await {
+            match self.step().await {
                 Ok(true) => {}
                 Ok(false) => {
                     // No new blocks, wait before checking again
                     let wait_ms = self.config.sync.main_loop_new_block_wait;
                     self.sleep_or_shutdown(wait_ms).await;
-                }
-                Err(SyncerError::ReorgDetected(height)) => {
-                    warn!(height, "Chain fork detected, rolling back");
-                    if let Err(e) = self.resolve_reorg(height).await {
-                        error!(error = %e, "Failed to resolve reorg");
-                        let wait_ms = self.config.sync.main_loop_error_wait;
-                        self.sleep_or_shutdown(wait_ms).await;
-                    }
                 }
                 Err(e) => {
                     error!(error = %e, "Sync iteration failed");
@@ -95,6 +86,19 @@ impl SyncEngine {
         }
 
         Ok(())
+    }
+
+    /// One unit of work: sync up to the current tip, or roll back a detected
+    /// fork so the next step can resync from it. `Ok(false)` = nothing to do.
+    pub(crate) async fn step(&mut self) -> Result<bool> {
+        match self.sync_iteration().await {
+            Err(SyncerError::ReorgDetected(height)) => {
+                warn!(height, "Chain fork detected, rolling back");
+                self.resolve_reorg(height).await?;
+                Ok(true)
+            }
+            other => other,
+        }
     }
 
     async fn sleep_or_shutdown(&mut self, wait_ms: u64) {
@@ -132,21 +136,28 @@ impl SyncEngine {
             None
         };
 
-        info!(
-            from = db_height + 1,
-            to = chain_height,
-            behind = chain_height - db_height,
-            "Syncing blocks"
-        );
+        // Catching up over many blocks gets progress lines; at the tip a
+        // single new block gets one line with its hash (see Progress).
+        let behind = chain_height - db_height;
+        let bulk = behind >= self.config.sync.batch_size as i64;
+        if bulk {
+            info!(from = db_height + 1, to = chain_height, behind, "Syncing blocks");
+        }
 
-        self.catch_up(db_height + 1, chain_height, last_hash).await?;
+        self.catch_up(db_height + 1, chain_height, last_hash, bulk).await?;
 
         Ok(true)
     }
 
     /// Fetch blocks `from..=to` from the node in batches (in a background task,
     /// several batches ahead) and index each batch as soon as it is ready.
-    async fn catch_up(&self, from: i64, to: i64, mut last_hash: Option<String>) -> Result<()> {
+    async fn catch_up(
+        &self,
+        from: i64,
+        to: i64,
+        mut last_hash: Option<String>,
+        bulk: bool,
+    ) -> Result<()> {
         let sync_cfg = &self.config.sync;
         let batch_size = sync_cfg.batch_size.max(1) as i64;
 
@@ -166,7 +177,7 @@ impl SyncEngine {
         ));
 
         let writer = BatchWriter::new(&self.pool, sync_cfg.async_commit);
-        let mut progress = Progress::new(from, to);
+        let mut progress = Progress::new(from, to, bulk);
 
         let result: Result<()> = async {
             while let Some(item) = batch_rx.recv().await {
@@ -202,7 +213,7 @@ impl SyncEngine {
 
     #[allow(clippy::too_many_arguments)]
     async fn fetch_loop(
-        rpc: Arc<RpcClient>,
+        rpc: Arc<C>,
         cache: Arc<Mutex<PrevOutCache>>,
         shutdown_rx: watch::Receiver<bool>,
         from: i64,
@@ -221,8 +232,8 @@ impl SyncEngine {
             let end = std::cmp::min(start + batch_size - 1, to);
 
             let prepared = async {
-                let blocks = Self::fetch_blocks(&rpc, start, end, block_concurrency).await?;
-                prepare_batch(&rpc, blocks, &cache, input_concurrency).await
+                let blocks = Self::fetch_blocks(rpc.as_ref(), start, end, block_concurrency).await?;
+                prepare_batch(rpc.as_ref(), blocks, &cache, input_concurrency).await
             }
             .await;
 
@@ -241,7 +252,7 @@ impl SyncEngine {
 
     /// Fetch `from..=to` concurrently, returning the blocks in height order.
     async fn fetch_blocks(
-        rpc: &RpcClient,
+        rpc: &C,
         from: i64,
         to: i64,
         concurrency: usize,
@@ -315,12 +326,15 @@ struct Progress {
     last_log: Instant,
     blocks_since_log: i64,
     txs_since_log: usize,
+    /// Bulk catch-up (throughput lines) vs. following the tip (one line per
+    /// block).
+    bulk: bool,
 }
 
 impl Progress {
     const LOG_EVERY: Duration = Duration::from_secs(10);
 
-    fn new(from: i64, to: i64) -> Self {
+    fn new(from: i64, to: i64, bulk: bool) -> Self {
         let now = Instant::now();
         Self {
             target: to,
@@ -329,10 +343,18 @@ impl Progress {
             last_log: now,
             blocks_since_log: 0,
             txs_since_log: 0,
+            bulk,
         }
     }
 
     fn record(&mut self, batch: &PreparedBatch, cache: &Mutex<PrevOutCache>) {
+        if !self.bulk {
+            for block in &batch.blocks {
+                info!(height = block.height, hash = %block.hash, txs = block.tx.len(), "New block");
+            }
+            return;
+        }
+
         self.blocks_since_log += batch.blocks.len() as i64;
         self.txs_since_log += batch.tx_count();
 

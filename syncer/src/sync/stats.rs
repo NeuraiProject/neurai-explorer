@@ -126,10 +126,16 @@ impl PriceSync {
         pool: DbPool,
         shutdown_rx: watch::Receiver<bool>,
     ) -> Self {
+        // A hung CoinGecko request must not stall this loop forever.
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
+
         Self {
             config,
             pool,
-            client: reqwest::Client::new(),
+            client,
             shutdown_rx,
         }
     }

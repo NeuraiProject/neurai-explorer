@@ -1,4 +1,4 @@
-mod engine;
+pub(crate) mod engine;
 mod processor;
 mod cache;
 mod stats;

@@ -197,7 +197,16 @@ RUST_LOG=info,sqlx=warn,reqwest=warn
 
 # Fetch blocks/previous transactions through the node's REST interface (default 1)
 RPC_USE_REST=1
+
+# Attempts per node request for transient failures (transport, HTTP 5xx/429)
+# and base backoff between attempts (doubles, with jitter, honours Retry-After)
+RPC_RETRIES=3
+RPC_RETRY_DELAY_MS=200
 ```
+
+At startup the syncer waits for the node to answer RPC (it logs a
+`Node not ready, retrying` line every few seconds while the node loads its
+indexes or reindexes), so it can be started together with the node.
 
 Sync tuning lives in `syncer/config.json` (rebuild the image after changing it):
 

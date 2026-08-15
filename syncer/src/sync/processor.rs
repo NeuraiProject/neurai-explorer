@@ -12,7 +12,7 @@ use crate::db::repositories::{
 };
 use crate::db::DbPool;
 use crate::error::{Result, SyncerError};
-use crate::rpc::RpcClient;
+use crate::rpc::NodeClient;
 use crate::types::{decode_hex, Asset, Block, Transaction};
 
 use super::cache::{prev_outs_of, PrevOutCache, PrevOuts};
@@ -52,8 +52,8 @@ impl PreparedBatch {
 ///
 /// Fails if any referenced transaction cannot be obtained: indexing the batch
 /// without it would silently corrupt address balances.
-pub async fn prepare_batch(
-    rpc: &RpcClient,
+pub async fn prepare_batch<C: NodeClient>(
+    rpc: &C,
     blocks: Vec<Block>,
     cache: &Mutex<PrevOutCache>,
     fetch_concurrency: usize,
