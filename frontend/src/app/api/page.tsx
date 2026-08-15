@@ -36,6 +36,20 @@ export default function ApiDocs() {
             <h1 className="text-3xl font-bold">API Documentation</h1>
 
             <section className="bg-card border border-border rounded-lg p-6">
+                <h2 className="text-2xl font-semibold text-card-foreground mb-2">Amounts</h2>
+                <p className="text-muted-foreground">
+                    All XNA and asset amounts are returned as <span className="font-mono">decimal strings</span> with
+                    8 decimals (for example <span className="font-mono">&quot;21000000000.12345678&quot;</span>), in
+                    transaction JSON (<span className="font-mono">vout[].value</span>, <span className="font-mono">vin[].value</span>,
+                    <span className="font-mono">scriptPubKey.asset.amount</span>) as well as in
+                    <span className="font-mono"> totalOutput</span>, <span className="font-mono">fee</span>, balances and supply.
+                    Unlike JSON numbers, strings keep satoshi precision above 2^53 in JavaScript. Raw transaction hex is
+                    unaffected. Node fields the explorer does not model (e.g. <span className="font-mono">valueSat</span>)
+                    are passed through as the node emits them.
+                </p>
+            </section>
+
+            <section className="bg-card border border-border rounded-lg p-6">
                 <h2 className="text-2xl font-semibold text-card-foreground mb-2">API Calls</h2>
                 <p className="text-muted-foreground mb-8">Return data from coind</p>
 

@@ -215,8 +215,11 @@ the current height, blocks/s and an ETA.
 
 ##### Database layout (schema v4)
 
-- Amounts are parsed exactly from the node's JSON (no `f64` step) and stored
-  as `NUMERIC` with 8 decimals.
+- Amounts are parsed exactly from the node's JSON (no `f64` step), stored as
+  `NUMERIC` with 8 decimals, and written back into `raw_data` and the API as
+  **decimal strings** (`"21000000000.12345678"`), so JavaScript consumers keep
+  satoshi precision. `transactions.total_output` and `transactions.fee` are
+  computed exactly by the syncer.
 - `blocks.raw_data` holds the block header with `tx` as a list of txids; the
   decoded transactions are in `transactions.raw_data` (ordered by `tx_index`),
   and the serialized bytes in `transactions.raw_hex`.

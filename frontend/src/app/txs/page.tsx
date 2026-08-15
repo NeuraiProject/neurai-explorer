@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
-import { formatDate, getAmountClass } from '@/lib/utils';
+import { formatAmount, formatDate, getAmountClass, getTotalOutput } from '@/lib/utils';
 import { Card } from '@/components/ui/Card';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { PaginationControls } from '@/components/ui/PaginationControls';
@@ -12,13 +12,6 @@ import { TxIdDisplay } from '@/components/TxIdDisplay';
 import Link from 'next/link';
 import { Transaction, TransactionOutput } from "@/types";
 import config from '../../config.json';
-
-function getTotalOutput(tx: Transaction) {
-    if (typeof tx.totalOutput === 'number') {
-        return tx.totalOutput;
-    }
-    return tx.vout.reduce((sum, v) => sum + (parseFloat(v.value) || 0), 0);
-}
 
 export default function TransactionsPage() {
     const [skip, setSkip] = useState(0);
@@ -56,7 +49,7 @@ export default function TransactionsPage() {
                                                 <TxIdDisplay txid={tx.txid} className="text-sm" />
                                             </Link>
                                             <div className={`rounded-md px-2 py-1 text-center text-sm font-bold ${getAmountClass(totalOutput)}`}>
-                                                {totalOutput ? totalOutput.toFixed(2) : '0.00'} XNA
+                                                {formatAmount(totalOutput, { decimals: 2 })} XNA
                                             </div>
                                             <div className="flex items-center justify-between text-sm text-muted-foreground">
                                                 <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-bold">
@@ -91,7 +84,7 @@ export default function TransactionsPage() {
                                                 <TxIdDisplay txid={tx.txid} className="text-base" />
                                             </Link>
                                             <div className={`justify-self-end rounded-md px-2 py-1 text-right font-bold ${getAmountClass(totalOutput)}`}>
-                                                {totalOutput ? totalOutput.toFixed(2) : '0.00'} XNA
+                                                {formatAmount(totalOutput, { decimals: 2 })} XNA
                                             </div>
                                             <div className="justify-self-end whitespace-nowrap text-sm text-muted-foreground">{formatDate(tx.blocktime)}</div>
                                         </div>

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiAsset } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { formatAmount, formatDate } from '@/lib/utils';
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { PaginationControls } from '@/components/ui/PaginationControls';
@@ -59,7 +59,7 @@ export default function AssetsPage() {
                                                             asset.name.startsWith('$') ? 'Restricted' : 'Main'}
                                                 </td>
                                                 <td className="px-6 py-4 text-right font-mono">
-                                                    {parseFloat(asset.amount.toString()).toLocaleString('en-US', { minimumFractionDigits: asset.units, maximumFractionDigits: asset.units })}
+                                                    {formatAmount(asset.amount, { decimals: asset.units, grouping: true })}
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
                                                     {asset.reissuable ? (

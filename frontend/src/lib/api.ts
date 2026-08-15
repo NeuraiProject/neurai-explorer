@@ -6,6 +6,7 @@
 import config from '../config.json';
 import type {
     Block,
+    BlockSummary,
     Transaction,
     Address,
     RichListEntry,
@@ -16,6 +17,7 @@ import type {
 // Re-export types for convenience
 export type {
     Block,
+    BlockSummary,
     Transaction,
     Address,
     RichListEntry,
@@ -26,7 +28,8 @@ export type {
 // API response type for assets (matches snake_case from API)
 export interface ApiAsset {
     name: string;
-    amount: number;
+    /** Decimal string, see AmountString */
+    amount: string;
     units: number;
     reissuable: boolean;
     has_ipfs: boolean;
@@ -147,7 +150,7 @@ export const api = {
     // Block endpoints
     getBlock: (hashOrHeight: string | number) => fetcher<Block>(`/block/${hashOrHeight}`),
     getLatestBlocks: (limit = HOMEPAGE_LIMIT, skip = 0) =>
-        fetcher<Block[]>(`/blocks?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}`),
+        fetcher<BlockSummary[]>(`/blocks?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}`),
 
     // Transaction endpoints
     getTx: (txid: string) => fetcher<Transaction>(`/tx/${txid}`),

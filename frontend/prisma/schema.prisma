@@ -28,6 +28,8 @@ model Transaction {
   txIndex     Int      @default(0) @map("tx_index")
   time        Int?
   totalOutput Decimal? @map("total_output") @db.Decimal
+  /// Inputs minus outputs (exact); 0 for coinbase, null if an input value is unknown
+  fee         Decimal? @db.Decimal
   /// Decoded transaction JSON (without `hex`, see rawHex)
   rawData     Json?    @map("raw_data")
   /// Serialized transaction bytes

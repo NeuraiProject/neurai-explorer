@@ -6,7 +6,8 @@ import { Card } from '@/components/ui/Card';
 import { TxIdDisplay } from '@/components/TxIdDisplay';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { Transaction, TransactionOutput } from "@/types";
+import { Transaction } from "@/types";
+import { formatAmount, getTotalOutput } from '@/lib/utils';
 
 export default function BlockPage() {
     const { id } = useParams();
@@ -92,7 +93,7 @@ export default function BlockPage() {
                                 </div>
                                 <div className="flex items-center justify-end pr-2">
                                     <span className="font-mono font-bold">
-                                        <span className="text-green-600 dark:text-green-400">{tx.vout.reduce((acc: number, v: TransactionOutput) => acc + (parseFloat(v.value) || 0), 0).toFixed(8)}</span> XNA
+                                        <span className="text-green-600 dark:text-green-400">{formatAmount(getTotalOutput(tx))}</span> XNA
                                     </span>
                                 </div>
                             </div>

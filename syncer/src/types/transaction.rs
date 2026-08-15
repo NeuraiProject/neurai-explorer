@@ -166,6 +166,7 @@ mod tests {
         assert_eq!(back["vrefin"][0]["txid"], "r");
         assert_eq!(back["vin"][0]["txinwitness"][0], "aa");
         assert_eq!(back["vout"][0]["valueSat"], 150000000);
-        assert_eq!(back["vout"][0]["value"].to_string(), "1.50000000");
+        // Modelled amounts come out as strings; unknown node fields (valueSat) as sent
+        assert_eq!(back["vout"][0]["value"], "1.50000000");
     }
 }

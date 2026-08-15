@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { formatAmount } from '@/lib/utils';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 
@@ -38,7 +39,7 @@ export default function RichListPage() {
                                         </Link>
                                     </td>
                                     <td className="p-3 text-right font-mono font-semibold">
-                                        {parseFloat(item.balance).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })} XNA
+                                        {formatAmount(item.balance, { decimals: 3, trim: true, grouping: true })} XNA
                                     </td>
                                 </tr>
                             ))}
@@ -56,7 +57,7 @@ export default function RichListPage() {
                                     {item.address}
                                 </Link>
                                 <span className="font-mono font-semibold">
-                                    {parseFloat(item.balance).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 3 })} XNA
+                                    {formatAmount(item.balance, { decimals: 3, trim: true, grouping: true })} XNA
                                 </span>
                             </div>
                         </div>

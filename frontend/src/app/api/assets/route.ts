@@ -31,10 +31,10 @@ export async function GET(request: Request) {
             LIMIT ${limit} OFFSET ${skip}
         `;
 
-        // Cast BigInt to Number/String for JSON serialization
+        // Decimal amounts as strings (exact); the rest as plain JSON values
         const serializedAssets = (assets as Record<string, unknown>[]).map(a => ({
             ...a,
-            amount: Number(a.amount),
+            amount: String(a.amount ?? '0'),
             units: a.units ?? 0,
             reissuable: a.reissuable ?? false,
             has_ipfs: a.has_ipfs ?? false,

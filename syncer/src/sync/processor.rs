@@ -5,10 +5,10 @@ use futures::stream::{self, StreamExt};
 use tracing::debug;
 
 use crate::db::repositories::{
-    AddressAssetDelta, AddressAssetsRepository, AddressDelta, AddressesRepository, AssetEventRow,
-    AssetEventsRepository, AssetUpsert, AssetsRepository, BlockRow, BlocksRepository,
-    SyncStateRepository, TransactionRow, TransactionsRepository, TxAddressAssetRow,
-    TxAddressAssetsRepository, TxAddressRow, TxAddressesRepository,
+    sats_to_decimal, AddressAssetDelta, AddressAssetsRepository, AddressDelta,
+    AddressesRepository, AssetEventRow, AssetEventsRepository, AssetUpsert, AssetsRepository,
+    BlockRow, BlocksRepository, SyncStateRepository, TransactionRow, TransactionsRepository,
+    TxAddressAssetRow, TxAddressAssetsRepository, TxAddressRow, TxAddressesRepository,
 };
 use crate::db::DbPool;
 use crate::error::{Result, SyncerError};
@@ -332,18 +332,23 @@ impl<'a> BatchWriter<'a> {
             rows.blocks.push(BlockRow::from_block(block)?);
 
             for (tx_index, transaction) in block.tx.iter().enumerate() {
-                let mut enriched =
+                let (mut enriched, input_total) =
                     Self::process_inputs(&mut rows, transaction, block, &batch.prev_outs)?;
 
                 // The serialized bytes go to their own column, not the JSON.
                 let raw_hex = enriched.hex.take().and_then(|h| decode_hex(&h));
+
+                let output_total = transaction.total_output().sats() as i128;
+                // Exact fee in satoshis; None if some input value is unknown.
+                let fee = input_total.map(|inputs| sats_to_decimal(inputs - output_total));
 
                 rows.transaction(TransactionRow {
                     txid: transaction.txid.clone(),
                     block_height: block.height as i32,
                     tx_index: tx_index as i32,
                     time: block.time as i32,
-                    total_output: transaction.total_output().to_decimal(),
+                    total_output: sats_to_decimal(output_total),
+                    fee,
                     raw_data: serde_json::to_value(&enriched)?,
                     raw_hex,
                 });
@@ -358,28 +363,36 @@ impl<'a> BatchWriter<'a> {
     }
 
     /// Debit the owners of the spent outputs and return the transaction with
-    /// its inputs enriched with address and value.
+    /// its inputs enriched with address and value, plus the total value of
+    /// its inputs in satoshis (`Some(0)` for coinbase, `None` if the value of
+    /// some input could not be determined).
     fn process_inputs(
         rows: &mut BatchRows,
         transaction: &Transaction,
         block: &Block,
         prev_outs: &HashMap<String, PrevOuts>,
-    ) -> Result<Transaction> {
+    ) -> Result<(Transaction, Option<i128>)> {
         let mut enriched = transaction.clone();
+        // Coinbase transactions have no inputs to sum: their "fee" is 0 by
+        // definition (the subsidy is not a fee), so start from the outputs.
+        let is_coinbase = transaction.vin.iter().any(|v| v.is_coinbase());
+        let mut input_total: Option<i128> = if is_coinbase {
+            Some(transaction.total_output().sats() as i128)
+        } else {
+            Some(0)
+        };
 
         for (i, vin) in transaction.vin.iter().enumerate() {
             if vin.is_coinbase() {
                 continue;
             }
 
-            let txid = match &vin.txid {
-                Some(t) => t,
-                None => continue,
-            };
-
-            let vout_idx = match vin.vout {
-                Some(v) => v as usize,
-                None => continue,
+            let (txid, vout_idx) = match (&vin.txid, vin.vout) {
+                (Some(t), Some(v)) => (t, v as usize),
+                _ => {
+                    input_total = None;
+                    continue;
+                }
             };
 
             let outs = prev_outs.get(txid).ok_or_else(|| {
@@ -391,16 +404,24 @@ impl<'a> BatchWriter<'a> {
 
             let prev_out = match outs.get(vout_idx) {
                 Some(out) => out,
-                None => continue,
-            };
-
-            let addr = match &prev_out.address {
-                Some(a) => a,
-                None => continue,
+                None => {
+                    input_total = None;
+                    continue;
+                }
             };
 
             let val = prev_out.value;
             let sats = val.sats() as i128;
+            if let Some(total) = input_total.as_mut() {
+                *total += sats;
+            }
+
+            // Outputs without an address (non-standard scripts) still count
+            // for the fee, but there is nobody to debit.
+            let addr = match &prev_out.address {
+                Some(a) => a,
+                None => continue,
+            };
 
             enriched.vin[i].addresses = Some(vec![addr.clone()]);
             enriched.vin[i].value = Some(val);
@@ -424,7 +445,7 @@ impl<'a> BatchWriter<'a> {
             }
         }
 
-        Ok(enriched)
+        Ok((enriched, input_total))
     }
 
     /// Credit the receivers of the outputs and register issued assets.

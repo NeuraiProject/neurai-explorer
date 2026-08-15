@@ -32,7 +32,7 @@ export async function GET(request: Request) {
             take: limit,
             skip: skip,
             // rawHex is only needed by getrawtransaction; keep it out of listings
-            select: { txid: true, blockHeight: true, time: true, totalOutput: true, rawData: true },
+            select: { txid: true, blockHeight: true, time: true, totalOutput: true, fee: true, rawData: true },
         });
 
         const result = transactions.map(row => ({
@@ -40,7 +40,8 @@ export async function GET(request: Request) {
             height: row.blockHeight,
             blocktime: row.time,
             txid: row.txid,
-            totalOutput: Number(row.totalOutput ?? 0),
+            totalOutput: row.totalOutput?.toString() ?? '0',
+            fee: row.fee?.toString(),
         }));
 
         return NextResponse.json(result, {

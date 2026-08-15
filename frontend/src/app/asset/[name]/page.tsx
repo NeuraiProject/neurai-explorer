@@ -4,12 +4,13 @@ import { TxIdDisplay } from "@/components/TxIdDisplay";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Asset } from "@/types"; // We will map the DB result to this interface
+import { formatAmount } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
 interface Holder {
     address: string;
-    balance: number;
+    balance: string;
 }
 
 export default async function AssetPage({ params }: { params: Promise<{ name: string }> }) {
@@ -32,7 +33,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
         if (asset) {
             assetData = {
                 name: asset.name,
-                amount: Number(asset.amount ?? 0),
+                amount: asset.amount?.toString() ?? '0',
                 units: asset.units ?? 0,
                 reissuable: asset.reissuable ?? false,
                 hasIpfs: asset.hasIpfs ?? false,
@@ -49,9 +50,9 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
             // In this file usage: assetData.ipfs_hash
             // I will update the usage in the rest of the file to match the interface property names (camelCase).
 
-            holders = holdersRes.map((h: { address: string, balance: any }) => ({
+            holders = holdersRes.map(h => ({
                 address: h.address,
-                balance: Number(h.balance)
+                balance: h.balance.toString()
             }));
         }
     } catch (e) {
@@ -77,7 +78,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-4 last:border-0 last:pb-0">
                             <span className="font-medium text-muted-foreground">Amount</span>
-                            <span className="font-mono text-lg">{assetData.amount}</span>
+                            <span className="font-mono text-lg">{formatAmount(assetData.amount, { decimals: assetData.units, grouping: true })}</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-4 last:border-0 last:pb-0">
                             <span className="font-medium text-muted-foreground">Units</span>
@@ -139,7 +140,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                         </Link>
                                     </td>
                                     <td className="px-6 py-4 text-right font-mono font-bold text-sm lg:text-base">
-                                        {holder.balance.toLocaleString('en-US', { minimumFractionDigits: assetData.units, maximumFractionDigits: assetData.units })}
+                                        {formatAmount(holder.balance, { decimals: assetData.units, grouping: true })}
                                     </td>
                                 </tr>
                             ))}

@@ -62,6 +62,14 @@ fn asset_out(n: u32, address: &str, script_type: &str, name: &str, amount: f64, 
     })
 }
 
+/// Output whose value is given as the exact decimal literal the node would
+/// print (json! would go through an f64 literal and lose digits above 2^53 sats).
+fn out_exact(n: u32, value: &str, address: &str) -> serde_json::Value {
+    let mut v = out(n, 0.0, Some(address));
+    v["value"] = serde_json::Value::Number(value.parse().expect("decimal literal"));
+    v
+}
+
 fn block(height: i64, prev: Option<&str>, txs: Vec<serde_json::Value>) -> Block {
     let mut b = json!({
         "hash": format!("{:064x}", height + 1),
@@ -74,7 +82,9 @@ fn block(height: i64, prev: Option<&str>, txs: Vec<serde_json::Value>) -> Block 
     if let Some(p) = prev {
         b["previousblockhash"] = json!(p);
     }
-    serde_json::from_value(b).expect("valid block json")
+    // Parse from text, like the real node responses: that is the exact path
+    // for amounts (from_value would go through f64).
+    serde_json::from_str(&b.to_string()).expect("valid block json")
 }
 
 /// A small chain exercising every code path of the writer:
@@ -164,11 +174,12 @@ async fn snapshot(pool: &PgPool) -> Vec<(String, String)> {
     for (t, a, name, d, h) in taa {
         rows.push((format!("tx_addr_asset:{}:{}:{}", t, a, name), format!("{} {}", n(&d), h)));
     }
-    let txs: Vec<(String, i32, Option<Vec<u8>>, serde_json::Value)> = sqlx::query_as(
-        "SELECT txid, tx_index, raw_hex, raw_data FROM transactions ORDER BY txid",
+    let txs: Vec<(String, i32, Option<Vec<u8>>, serde_json::Value, Option<BigDecimal>)> = sqlx::query_as(
+        "SELECT txid, tx_index, raw_hex, raw_data, fee FROM transactions ORDER BY txid",
     ).fetch_all(pool).await.unwrap();
-    for (t, i, hex, raw) in txs {
-        rows.push((format!("tx_v4:{}", t), format!("idx={} hex={:?} json_hex={}", i, hex, raw.get("hex").is_some())));
+    for (t, i, hex, raw, fee) in txs {
+        rows.push((format!("tx_v4:{}", t), format!("idx={} hex={:?} json_hex={} fee={}", i, hex, raw.get("hex").is_some(),
+            fee.map(|f| n(&f)).unwrap_or_else(|| "null".into()))));
     }
     let blocks: Vec<(i32, serde_json::Value)> = sqlx::query_as(
         "SELECT height, raw_data FROM blocks ORDER BY height",
@@ -237,7 +248,7 @@ async fn snapshot_legacy(pool: &PgPool, with_tx_count: bool) -> Vec<(String, Str
 /// Decimal as a normalized string (no trailing zeros), independent of the
 /// scale the driver decodes NUMERIC with.
 fn n(d: &BigDecimal) -> String {
-    d.normalized().to_string()
+    d.normalized().to_plain_string()
 }
 
 fn get<'a>(snap: &'a [(String, String)], key: &str) -> &'a str {
@@ -278,8 +289,10 @@ async fn writer_produces_expected_ledger() {
     assert_eq!(get(&snap, "tx_addr_asset:t4:E:TOKEN"), "250 3");
 
     // raw_data layout: hex in its own column, block lists txids only
-    assert_eq!(get(&snap, "tx_v4:t3"), "idx=2 hex=Some([0]) json_hex=false");
-    assert_eq!(get(&snap, "tx_v4:c2"), "idx=0 hex=Some([0]) json_hex=false");
+    assert_eq!(get(&snap, "tx_v4:t3"), "idx=2 hex=Some([0]) json_hex=false fee=0.1");
+    assert_eq!(get(&snap, "tx_v4:c2"), "idx=0 hex=Some([0]) json_hex=false fee=0");
+    assert_eq!(get(&snap, "tx_v4:t1"), "idx=1 hex=Some([0]) json_hex=false fee=0.1");
+    assert_eq!(get(&snap, "tx_v4:t4"), "idx=1 hex=Some([0]) json_hex=false fee=0");
     assert_eq!(get(&snap, "block_v4:2"), r#"tx=["c2","t2","t3"] size=300"#);
 
     // TOKEN: issued 1000 + reissued 500, ipfs hash from the reissue, first height/txid kept
@@ -301,7 +314,8 @@ async fn writer_produces_expected_ledger() {
     // Inputs are enriched with address/value in raw_data, total_output is exact
     let t1 = get(&snap, "tx:t1");
     assert!(t1.starts_with("1 1700000060 49999.9 "), "{}", t1);
-    assert!(t1.contains(r#""addresses":["A"]"#) && t1.contains(r#""value":50000.0"#), "{}", t1);
+    // Amounts are strings in the stored JSON (exact for JavaScript consumers)
+    assert!(t1.contains(r#""addresses":["A"]"#) && t1.contains(r#""value":"50000.00000000""#), "{}", t1);
 
     assert_eq!(get(&snap, "block:3"), format!("{:064x} 1700000180 0.1 2", 4));
     assert_eq!(get(&snap, "sync_state"), "3");
@@ -693,6 +707,60 @@ async fn rollback_rebuilds_assets_and_removes_orphans() {
     rollback_from_height(&pool, 0).await.unwrap();
     let empty = snapshot(&pool).await;
     assert_eq!(empty, vec![("sync_state".to_string(), "-1".to_string())]);
+}
+
+/// Amounts above 2^53 satoshis survive the whole path: node JSON -> ledger ->
+/// stored JSON (as strings) -> fee, with satoshi precision.
+#[tokio::test]
+#[ignore]
+async fn amounts_above_2_pow_53_sats_are_exact_end_to_end() {
+    let Some(pool) = test_pool().await else { return };
+
+    // 21,000,000,000.12345678 XNA = 2.1e18 sats > 2^53 (9.007e15) and > f64's 15-17 digits
+    let b0 = block(0, None, vec![coinbase_tx("w0", vec![out_exact(0, "21000000000.12345678", "W")])]);
+    let b1 = block(1, Some(&b0.hash), vec![
+        coinbase_tx("w1", vec![out(0, 50000.0, Some("M"))]),
+        tx("s1", vec![("w0", 0)], vec![
+            out_exact(0, "21000000000.00000001", "X"),
+            out_exact(1, "0.12345676", "W"),
+            // fee = 0.00000001
+        ]),
+    ]);
+    // Same block json in a batch => same values (also proves the fixture path is exact)
+    let batch = prepare_offline(vec![b0, b1]);
+    assert_eq!(batch.blocks[0].tx[0].vout[0].value.sats(), 2_100_000_000_012_345_678);
+
+    BatchWriter::new(&pool, true).write(&batch).await.unwrap();
+
+    let (w_balance, w_received, w_sent): (BigDecimal, BigDecimal, BigDecimal) = sqlx::query_as(
+        "SELECT balance, total_received, total_sent FROM addresses WHERE address = 'W'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(n(&w_balance), "0.12345676");
+    assert_eq!(n(&w_received), "21000000000.24691354");
+    assert_eq!(n(&w_sent), "21000000000.12345678");
+
+    let (x_balance,): (BigDecimal,) = sqlx::query_as("SELECT balance FROM addresses WHERE address = 'X'")
+        .fetch_one(&pool).await.unwrap();
+    assert_eq!(n(&x_balance), "21000000000.00000001");
+
+    let (total, fee, raw): (BigDecimal, Option<BigDecimal>, serde_json::Value) = sqlx::query_as(
+        "SELECT total_output, fee, raw_data FROM transactions WHERE txid = 's1'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(n(&total), "21000000000.12345677");
+    assert_eq!(n(&fee.unwrap()), "0.00000001");
+    // Stored JSON carries the exact literals as strings
+    assert_eq!(raw["vin"][0]["value"], "21000000000.12345678");
+    assert_eq!(raw["vout"][0]["value"], "21000000000.00000001");
+    assert_eq!(raw["vout"][1]["value"], "0.12345676");
+    // ...and what a JavaScript consumer would get from a JSON number instead
+    let as_f64: f64 = "21000000000.12345678".parse().unwrap();
+    assert_ne!(format!("{:.8}", as_f64), "21000000000.12345678", "the f64 path really is lossy");
+
+    let (received, sent): (BigDecimal, BigDecimal) = sqlx::query_as(
+        "SELECT received, sent FROM tx_addresses WHERE txid = 's1' AND address = 'W'",
+    ).fetch_one(&pool).await.unwrap();
+    assert_eq!(n(&received), "0.12345676");
+    assert_eq!(n(&sent), "21000000000.12345678");
 }
 
 /// Synthetic chain shaped like Neurai mainnet (~1.1 tx per block: mostly

@@ -6,10 +6,13 @@
 -- RESYNC_ON_SCHEMA_CHANGE=1 is set, in which case it wipes the indexed data
 -- and syncs again from genesis.
 
--- transactions: position inside the block and the raw bytes outside the JSON
+-- transactions: position inside the block, the raw bytes outside the JSON and
+-- the fee (inputs - outputs, exact; 0 for coinbase; NULL if an input's value
+-- could not be resolved).
 ALTER TABLE transactions
     ADD COLUMN IF NOT EXISTS tx_index INTEGER NOT NULL DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS raw_hex BYTEA;
+    ADD COLUMN IF NOT EXISTS raw_hex BYTEA,
+    ADD COLUMN IF NOT EXISTS fee NUMERIC;
 CREATE INDEX IF NOT EXISTS idx_tx_height_index ON transactions (block_height, tx_index);
 DROP INDEX IF EXISTS idx_tx_height;
 

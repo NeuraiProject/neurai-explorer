@@ -17,6 +17,9 @@ const SATS_PER_UNIT: i64 = 100_000_000;
 /// When the value arrives as a float (e.g. rebuilt from a `serde_json::Value`
 /// or an exotic literal), it is rounded to 8 decimals, which is what the
 /// previous `f64` code did.
+///
+/// Serialized as a decimal **string** so that consumers in JavaScript keep
+/// the exact value (see `Serialize`).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct Amount(i64);
 
@@ -148,11 +151,13 @@ impl std::iter::Sum for Amount {
 }
 
 impl Serialize for Amount {
+    /// Emitted as a JSON **string** (`"50000.00000000"`), never as a number:
+    /// JSON numbers become IEEE doubles as soon as JavaScript parses them,
+    /// which loses satoshis above 2^53 (~90 M XNA). Deserialization accepts
+    /// both forms, so JSON produced here round-trips and the node's numeric
+    /// JSON is still read exactly.
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        // Emitted as a JSON number with the exact literal, e.g. 50000.00000000
-        serde_json::Number::from_str(&self.to_literal())
-            .map_err(serde::ser::Error::custom)?
-            .serialize(serializer)
+        serializer.serialize_str(&self.to_literal())
     }
 }
 
@@ -229,12 +234,16 @@ mod tests {
         struct Out {
             value: Amount,
         }
+        // Node JSON (number) -> exact sats -> our JSON (string) -> exact sats
         let out: Out = serde_json::from_str(r#"{"value":21000000000.12345678}"#).unwrap();
         assert_eq!(out.value.sats(), 2_100_000_000_012_345_678);
-        assert_eq!(serde_json::to_string(&out).unwrap(), r#"{"value":21000000000.12345678}"#);
+        let ours = serde_json::to_string(&out).unwrap();
+        assert_eq!(ours, r#"{"value":"21000000000.12345678"}"#);
+        let back: Out = serde_json::from_str(&ours).unwrap();
+        assert_eq!(back.value, out.value);
 
         let out: Out = serde_json::from_str(r#"{"value":50000}"#).unwrap();
-        assert_eq!(serde_json::to_string(&out).unwrap(), r#"{"value":50000.00000000}"#);
+        assert_eq!(serde_json::to_string(&out).unwrap(), r#"{"value":"50000.00000000"}"#);
 
         // Values rebuilt from a serde_json::Value go through f64: rounded to 8 decimals
         let out: Out = serde_json::from_value(serde_json::json!({"value": 0.1})).unwrap();

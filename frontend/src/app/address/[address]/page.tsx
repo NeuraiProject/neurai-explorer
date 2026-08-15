@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card';
 import { TxIdDisplay } from "@/components/TxIdDisplay";
 import Link from 'next/link';
 import { AddressAsset, Transaction, TransactionInput, TransactionOutput, Address } from "@/types";
+import { formatAmount, formatSats, satsOf, sumAmounts } from "@/lib/utils";
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
         // Use DB results directly
         assetBalances = assetsRes.map(row => ({
             asset: row.assetName,
-            balance: Number(row.balance),
+            balance: row.balance.toString(),
             units: row.asset?.units ?? 0
         }));
 
@@ -48,28 +49,28 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
     }
 
     /**
-     * Net XNA moved by the address in a tx. The history rows carry the exact
-     * received/sent amounts; walking vin/vout is only a fallback.
+     * Net XNA moved by the address in a tx, in satoshis (exact). The history
+     * rows carry received/sent; walking vin/vout is only a fallback.
      */
-    function getTxNetAmount(tx: Transaction, address: string) {
+    function getTxNetSats(tx: Transaction, address: string): bigint {
         if (tx.received !== undefined && tx.sent !== undefined) {
-            return parseFloat(tx.received) - parseFloat(tx.sent);
+            return satsOf(tx.received) - satsOf(tx.sent);
         }
-        const received = (tx.vout || []).reduce((sum: number, v: TransactionOutput) => {
-            const addresses = v?.scriptPubKey?.addresses || [];
-            return addresses.includes(address) ? sum + (parseFloat(v.value) || 0) : sum;
-        }, 0);
-        const sent = (tx.vin || []).reduce((sum: number, v: TransactionInput) => {
-            const addresses = v?.addresses || [];
-            return addresses.includes(address) ? sum + (parseFloat(v.value || '0') || 0) : sum;
-        }, 0);
+        const received = sumAmounts((tx.vout || [])
+            .filter((v: TransactionOutput) => (v?.scriptPubKey?.addresses || []).includes(address))
+            .map(v => v.value));
+        const sent = sumAmounts((tx.vin || [])
+            .filter((v: TransactionInput) => (v?.addresses || []).includes(address))
+            .map(v => v.value));
         return received - sent;
     }
 
+    const ZERO = BigInt(0);
+
     function formatAssetDelta(delta: string) {
-        const n = parseFloat(delta);
-        const sign = n > 0 ? "+" : n < 0 ? "-" : "";
-        return `${sign}${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 8 })}`;
+        const sats = satsOf(delta);
+        const sign = sats > ZERO ? "+" : sats < ZERO ? "-" : "";
+        return `${sign}${formatSats(sats < ZERO ? -sats : sats, { trim: true, grouping: true })}`;
     }
 
     return (
@@ -84,15 +85,15 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                     <div className="p-6 grid gap-4">
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Balance</span>
-                            <span className="font-mono">{parseFloat(addr.balance).toFixed(8)} <span className="text-primary">XNA</span></span>
+                            <span className="font-mono">{formatAmount(addr.balance)} <span className="text-primary">XNA</span></span>
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Total Received</span>
-                            <span className="font-mono text-green-600 dark:text-green-400">{parseFloat(addr.totalReceived).toFixed(8)}</span>
+                            <span className="font-mono text-green-600 dark:text-green-400">{formatAmount(addr.totalReceived)}</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Total Sent</span>
-                            <span className="font-mono text-red-600 dark:text-red-400">{parseFloat(addr.totalSent).toFixed(8)}</span>
+                            <span className="font-mono text-red-600 dark:text-red-400">{formatAmount(addr.totalSent)}</span>
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Transactions</span>
@@ -110,13 +111,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                         {asset.asset}
                                     </Link>
                                     <span className="font-mono text-muted-foreground font-bold">
-                                        {/* Balances from RPC are usually integers (satoshis equivalent), need to know decimals.
-                                            Most Neurai assets have units. We might need to fetch asset def to know decimals...
-                                            For now, let's display raw or assume 0 decimals if not known?
-                                            Actually, usually listaddressbalances returns with decimals if formatted?
-                                            Let's blindly display what RPC returns for now.
-                                         */}
-                                        {asset.balance}
+                                        {formatAmount(asset.balance, { decimals: asset.units ?? 0, grouping: true })}
                                     </span>
                                 </div>
                             ))
@@ -131,25 +126,22 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                 <h2 className="text-2xl font-semibold">Transactions</h2>
                 <div className="space-y-4">
                     {addr.transactions?.map((tx: Transaction) => {
-                        const netAmount = getTxNetAmount(tx, addrStr);
-                        const isIncoming = netAmount > 0;
-                        const isOutgoing = netAmount < 0;
+                        const netSats = getTxNetSats(tx, addrStr);
+                        const isIncoming = netSats > ZERO;
+                        const isOutgoing = netSats < ZERO;
                         const amountClass = isIncoming
                             ? "text-green-600 dark:text-green-400"
                             : isOutgoing
                                 ? "text-red-600 dark:text-red-400"
                                 : "text-muted-foreground";
-                        const amountLabel = `${isIncoming ? "+" : isOutgoing ? "-" : ""}${Math.abs(netAmount).toFixed(3)} XNA`;
+                        const amountLabel = `${isIncoming ? "+" : isOutgoing ? "-" : ""}${formatSats(isOutgoing ? -netSats : netSats, { decimals: 3 })} XNA`;
                         const assetLabels = (tx.assetDeltas ?? [])
-                            .filter(a => parseFloat(a.delta) !== 0)
-                            .map(a => {
-                                const n = parseFloat(a.delta);
-                                return {
-                                    asset: a.asset,
-                                    label: formatAssetDelta(a.delta),
-                                    className: n > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
-                                };
-                            });
+                            .filter(a => satsOf(a.delta) !== ZERO)
+                            .map(a => ({
+                                asset: a.asset,
+                                label: formatAssetDelta(a.delta),
+                                className: satsOf(a.delta) > ZERO ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                            }));
                         const dateTime = new Date(tx.blocktime * 1000).toLocaleString(undefined, {
                             year: '2-digit',
                             month: 'numeric',

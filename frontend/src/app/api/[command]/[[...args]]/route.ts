@@ -123,9 +123,9 @@ export async function GET(
                 if (!address) return NextResponse.json({ error: 'Address not found' }, { status: 404 });
                 return NextResponse.json({
                     address: address.address,
-                    sent: Number(address.totalSent),
-                    received: Number(address.totalReceived),
-                    balance: Number(address.balance).toString(),
+                    sent: address.totalSent.toString(),
+                    received: address.totalReceived.toString(),
+                    balance: address.balance.toString(),
                     last_txs: []
                 });
             }
@@ -172,8 +172,8 @@ export async function GET(
                     where: { address: addr },
                     select: { balance: true }
                 });
-                const balance = address?.balance || 0;
-                return new NextResponse(Number(balance).toString(), { headers: { 'Content-Type': 'text/plain' } });
+                const balance = address?.balance?.toString() ?? '0';
+                return new NextResponse(balance, { headers: { 'Content-Type': 'text/plain' } });
             }
             case 'getlasttxs': {
                 const min = parseFloat(args[0] || '0');
@@ -202,7 +202,8 @@ export async function GET(
                     fetch('https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd,btc').then(r => r.json()).catch(() => ({}))
                 ]);
 
-                const supply = Number(supplyResult._sum.balance || 0);
+                // Exact decimal string (the source moves to network_stats.supply in a later change)
+                const supply = supplyResult._sum.balance?.toString() ?? '0';
 
                 return NextResponse.json({
                     blockcount: stats?.height || 0,

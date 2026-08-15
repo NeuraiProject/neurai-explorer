@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { TxIdDisplay } from '@/components/TxIdDisplay';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { formatAmount, getTotalOutput } from '@/lib/utils';
 
 export default function TxPage() {
     const { id } = useParams();
@@ -21,7 +22,8 @@ export default function TxPage() {
     if (error) return <div className="text-center p-8 text-destructive">Error loading transaction</div>;
     if (!tx) return <div className="text-center p-8 text-destructive">Transaction not found</div>;
 
-    const totalOutput = tx.vout.reduce((sum, vout) => sum + (parseFloat(vout.value || "0") || 0), 0);
+    // Exact totals come from the syncer (totalOutput/fee); no float sums here
+    const totalOutput = getTotalOutput(tx);
 
     return (
         <div className="flex flex-col gap-6">
@@ -44,13 +46,13 @@ export default function TxPage() {
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Output</span>
-                        <span className="font-mono font-bold text-green-600 dark:text-green-400">{totalOutput.toFixed(8)} <span className="text-muted-foreground text-sm font-normal">XNA</span></span>
+                        <span className="font-mono font-bold text-green-600 dark:text-green-400">{formatAmount(totalOutput)} <span className="text-muted-foreground text-sm font-normal">XNA</span></span>
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Fee</span>
                         <span className="font-mono">
-                            {typeof tx.fee === 'number'
-                                ? <>{tx.fee.toFixed(8)} <span className="text-muted-foreground text-sm font-normal">XNA</span></>
+                            {tx.fee !== undefined && tx.fee !== null
+                                ? <>{formatAmount(tx.fee)} <span className="text-muted-foreground text-sm font-normal">XNA</span></>
                                 : <span className="text-muted-foreground">—</span>}
                         </span>
                     </div>
@@ -80,7 +82,7 @@ export default function TxPage() {
                                     )}
                                 </div>
                                 <div className="font-mono text-sm whitespace-nowrap">
-                                    {vin.value ? parseFloat(vin.value).toFixed(8) : ''} XNA
+                                    {vin.value ? formatAmount(vin.value) : ''} XNA
                                 </div>
                             </li>
                         ))}
@@ -96,7 +98,7 @@ export default function TxPage() {
                                     </Link>
                                 </div>
                                 <div className="font-mono text-sm lg:text-base whitespace-nowrap font-bold text-green-600 dark:text-green-400">
-                                    {parseFloat(vout.value).toFixed(8)} XNA
+                                    {formatAmount(vout.value)} XNA
                                 </div>
                             </li>
                         ))}

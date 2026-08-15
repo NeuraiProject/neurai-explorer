@@ -7,6 +7,13 @@
 // Block Types
 // ============================================
 
+/**
+ * Amounts (XNA and assets) travel as decimal strings with 8 decimals
+ * ("21000000000.12345678"). Do not convert them to `number`; use the helpers
+ * in `lib/utils.ts` (`formatAmount`, `satsOf`, `sumAmounts`).
+ */
+export type AmountString = string;
+
 export interface Block {
     hash: string;
     height: number;
@@ -22,6 +29,7 @@ export interface Block {
     previousBlockHash?: string;
     nextBlockHash?: string;
     confirmations: number;
+    /** Full transactions (`/api/block/[id]`) */
     tx: Transaction[];
     // Pagination (when applicable)
     page?: number;
@@ -35,6 +43,12 @@ export interface Block {
     /** @deprecated Use nextBlockHash instead */
     nextblockhash?: string;
 }
+
+/** Block as returned by `/api/blocks` (listing): the header, txids only. */
+export type BlockSummary = Omit<Block, 'tx' | 'confirmations'> & {
+    tx?: string[];
+    confirmations?: number;
+};
 
 // ============================================
 // Transaction Types
@@ -52,22 +66,23 @@ export interface Transaction {
     confirmations?: number;
     vin: TransactionInput[];
     vout: TransactionOutput[];
-    /** Inputs minus outputs; undefined when an input value is unknown */
-    fee?: number;
-    totalOutput?: number;
+    /** Inputs minus outputs (exact, from the syncer); undefined when an input value is unknown */
+    fee?: AmountString;
+    /** Sum of the outputs (exact, from the syncer) */
+    totalOutput?: AmountString;
     hex?: string;
     // Present in an address history: what that address moved in this tx
     /** XNA received by the address */
-    received?: string;
+    received?: AmountString;
     /** XNA spent by the address */
-    sent?: string;
+    sent?: AmountString;
     /** Asset units moved by the address (+ received, - sent) */
     assetDeltas?: AssetDelta[];
 }
 
 export interface AssetDelta {
     asset: string;
-    delta: string;
+    delta: AmountString;
 }
 
 export interface TransactionInput {
@@ -77,12 +92,13 @@ export interface TransactionInput {
     n: number;
     addresses?: string[];
     isAddress: boolean;
-    value?: string;
+    /** Value of the spent output (enriched by the syncer) */
+    value?: AmountString;
     coinbase?: string;
 }
 
 export interface TransactionOutput {
-    value: string;
+    value: AmountString;
     n: number;
     hex?: string;
     addresses: string[];
@@ -91,11 +107,22 @@ export interface TransactionOutput {
     scriptPubKey?: ScriptPubKey;
 }
 
+/** Asset carried by an output (as in the node's `scriptPubKey.asset`) */
+export interface ScriptAsset {
+    name: string;
+    amount: AmountString;
+    units?: number;
+    reissuable?: number;
+    hasIPFS?: number;
+    ipfs_hash?: string;
+}
+
 export interface ScriptPubKey {
     asm: string;
     hex: string;
     type: string;
     addresses?: string[];
+    asset?: ScriptAsset;
 }
 
 // ============================================
@@ -104,9 +131,9 @@ export interface ScriptPubKey {
 
 export interface Address {
     address: string;
-    balance: string;
-    totalReceived: string;
-    totalSent: string;
+    balance: AmountString;
+    totalReceived: AmountString;
+    totalSent: AmountString;
     unconfirmedBalance?: string;
     unconfirmedTxs?: number;
     txs: number;
@@ -131,9 +158,9 @@ export interface Token {
 
 export interface RichListEntry {
     address: string;
-    balance: string;
-    totalReceived: string;
-    totalSent: string;
+    balance: AmountString;
+    totalReceived: AmountString;
+    totalSent: AmountString;
     txCount: number;
 }
 
@@ -187,7 +214,7 @@ export interface NetworkStats {
 
 export interface Asset {
     name: string;
-    amount: number;
+    amount: AmountString;
     units: number;
     reissuable: boolean;
     hasIpfs: boolean;
@@ -200,7 +227,7 @@ export interface Asset {
 
 export interface AddressAsset {
     asset: string;
-    balance: number;
+    balance: AmountString;
     units?: number;
 }
 

@@ -23,7 +23,7 @@ export async function getBlockJson(where: { hash: string } | { height: number })
         prisma.transaction.findMany({
             where: { blockHeight: block.height },
             orderBy: { txIndex: 'asc' },
-            select: { rawData: true },
+            select: { rawData: true, totalOutput: true, fee: true },
         }),
         prisma.block.findUnique({
             where: { height: block.height + 1 },
@@ -35,7 +35,12 @@ export async function getBlockJson(where: { hash: string } | { height: number })
     const raw = block.rawData as Record<string, unknown>;
     return {
         ...raw,
-        tx: txs.map(t => t.rawData),
+        // Each tx carries its exact totals so the UI never sums outputs in floats
+        tx: txs.map(t => ({
+            ...(t.rawData as Record<string, unknown>),
+            totalOutput: t.totalOutput?.toString(),
+            fee: t.fee?.toString(),
+        })),
         confirmations: confirmationsAt(block.height, tip),
         ...(next?.hash ? { nextblockhash: next.hash } : {}),
     };

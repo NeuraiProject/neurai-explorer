@@ -11,6 +11,9 @@ pub struct TransactionRow {
     pub tx_index: i32,
     pub time: i32,
     pub total_output: BigDecimal,
+    /// Inputs minus outputs; 0 for coinbase, None when an input value is
+    /// unknown.
+    pub fee: Option<BigDecimal>,
     /// Decoded transaction JSON, without `hex`.
     pub raw_data: serde_json::Value,
     /// Serialized transaction bytes.
@@ -37,20 +40,22 @@ impl TransactionsRepository {
         let indexes: Vec<i32> = rows.iter().map(|r| r.tx_index).collect();
         let times: Vec<i32> = rows.iter().map(|r| r.time).collect();
         let totals: Vec<BigDecimal> = rows.iter().map(|r| r.total_output.clone()).collect();
+        let fees: Vec<Option<BigDecimal>> = rows.iter().map(|r| r.fee.clone()).collect();
         let raw_data: Vec<serde_json::Value> = rows.iter().map(|r| r.raw_data.clone()).collect();
         let raw_hex: Vec<Option<&[u8]>> = rows.iter().map(|r| r.raw_hex.as_deref()).collect();
 
         sqlx::query(
             r#"
-            INSERT INTO transactions (txid, block_height, tx_index, time, total_output, raw_data, raw_hex)
+            INSERT INTO transactions (txid, block_height, tx_index, time, total_output, fee, raw_data, raw_hex)
             SELECT * FROM UNNEST(
-                $1::text[], $2::int[], $3::int[], $4::int[], $5::numeric[], $6::jsonb[], $7::bytea[]
+                $1::text[], $2::int[], $3::int[], $4::int[], $5::numeric[], $6::numeric[], $7::jsonb[], $8::bytea[]
             )
             ON CONFLICT (txid) DO UPDATE SET
                 block_height = EXCLUDED.block_height,
                 tx_index = EXCLUDED.tx_index,
                 time = EXCLUDED.time,
                 total_output = EXCLUDED.total_output,
+                fee = EXCLUDED.fee,
                 raw_data = EXCLUDED.raw_data,
                 raw_hex = EXCLUDED.raw_hex
             "#,
@@ -60,6 +65,7 @@ impl TransactionsRepository {
         .bind(&indexes)
         .bind(&times)
         .bind(&totals)
+        .bind(&fees)
         .bind(&raw_data)
         .bind(&raw_hex)
         .execute(&mut **tx)
