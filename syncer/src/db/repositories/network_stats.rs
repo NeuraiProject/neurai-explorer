@@ -15,6 +15,7 @@ impl NetworkStatsRepository {
         height: i64,
         supply: f64,
         peers_data: &[PeerInfo],
+        node_version: &str,
     ) -> Result<()> {
         let difficulty_bd = BigDecimal::try_from(difficulty).unwrap_or_default();
         let hashrate_bd = BigDecimal::try_from(hashrate).unwrap_or_default();
@@ -24,8 +25,8 @@ impl NetworkStatsRepository {
 
         sqlx::query(
             r#"
-            INSERT INTO network_stats (id, difficulty, hashrate, connections, height, supply, peers_data, updated_at)
-            VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO network_stats (id, difficulty, hashrate, connections, height, supply, peers_data, node_version, updated_at)
+            VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO UPDATE SET
                 difficulty = $1,
                 hashrate = $2,
@@ -33,7 +34,8 @@ impl NetworkStatsRepository {
                 height = $4,
                 supply = $5,
                 peers_data = $6,
-                updated_at = $7
+                node_version = $7,
+                updated_at = $8
             "#,
         )
         .bind(&difficulty_bd)
@@ -42,6 +44,7 @@ impl NetworkStatsRepository {
         .bind(height as i32)
         .bind(&supply_bd)
         .bind(&peers_json)
+        .bind(node_version)
         .bind(now)
         .execute(pool)
         .await?;

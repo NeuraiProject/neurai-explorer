@@ -51,6 +51,9 @@ impl StatsSync {
         // Fetch mining info
         let mining_info = self.rpc.get_mining_info().await?;
 
+        // Fetch node version
+        let network_info = self.rpc.get_network_info().await?;
+
         // Fetch connection count
         let connections = self.rpc.get_connection_count().await?;
 
@@ -69,6 +72,7 @@ impl StatsSync {
             mining_info.blocks,
             txout_info.total_amount,
             &peers,
+            &network_info.subversion,
         )
         .await?;
 
@@ -76,6 +80,7 @@ impl StatsSync {
             height = mining_info.blocks,
             difficulty = mining_info.difficulty,
             connections,
+            node_version = %network_info.subversion,
             "Network stats updated"
         );
 

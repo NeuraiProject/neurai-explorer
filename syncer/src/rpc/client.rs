@@ -5,7 +5,7 @@ use tracing::{debug, warn};
 
 use crate::config::RpcConfig;
 use crate::error::{Result, SyncerError};
-use crate::types::{Block, MiningInfo, PeerInfo, Transaction, TxOutSetInfo};
+use crate::types::{Block, MiningInfo, NetworkInfo, PeerInfo, Transaction, TxOutSetInfo};
 use super::types::{RpcRequest, RpcResponse};
 
 pub struct RpcClient {
@@ -108,6 +108,10 @@ impl RpcClient {
     // Network methods
     pub async fn get_mining_info(&self) -> Result<MiningInfo> {
         self.call("getmininginfo", vec![]).await
+    }
+
+    pub async fn get_network_info(&self) -> Result<NetworkInfo> {
+        self.call("getnetworkinfo", vec![]).await
     }
 
     pub async fn get_connection_count(&self) -> Result<i32> {

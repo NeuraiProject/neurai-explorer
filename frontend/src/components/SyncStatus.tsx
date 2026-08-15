@@ -46,6 +46,7 @@ export function SyncStatus() {
 
     const isNodeSynced = nodeHeight >= networkHeight && nodeHeight > 0;
     const isExplorerSynced = explorerHeight >= nodeHeight && explorerHeight > 0;
+    const nodeVersion = status?.backend.version || null;
 
     let color = "bg-green-500";
     let statusText = "Synchronized";
@@ -108,6 +109,12 @@ export function SyncStatus() {
                         <div className="flex items-center justify-between gap-3">
                             <span>Network</span>
                             <span className="font-mono text-foreground">{networkHeight.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3 mt-1 pt-1 border-t border-border">
+                            <span>Version</span>
+                            <span className="font-mono text-foreground">
+                                {nodeVersion ? `Neurai ${nodeVersion}` : '—'}
+                            </span>
                         </div>
                     </div>
                 </div>

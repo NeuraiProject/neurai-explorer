@@ -24,6 +24,11 @@ export async function GET() {
         const connectionCount = isStale ? 0 : (stats?.connections ?? 0);
         const nodeHeight = isStale ? 0 : (stats?.height ?? 0);
 
+        // Node reports e.g. "/Neurai:1.0.6/"; keep the raw string as subversion
+        // and the bare release number as version.
+        const subversion = stats?.nodeVersion ?? "";
+        const version = subversion.replace(/^\/?Neurai:/i, "").replace(/\/$/, "");
+
 
         // Build response matching SystemInfo interface
         const systemInfo = {
@@ -52,8 +57,8 @@ export async function GET() {
                 bestBlockHash: "",
                 difficulty: stats?.difficulty?.toString() ?? "0",
                 sizeOnDisk: 0,
-                version: "1.0.0",
-                subversion: "/Neurai:1.0.0/",
+                version,
+                subversion,
                 protocolVersion: "70015",
                 hashrate: Number(stats?.hashrate ?? 0),
                 supply: Number(stats?.supply ?? 0),

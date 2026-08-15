@@ -10,6 +10,13 @@ pub struct MiningInfo {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkInfo {
+    pub version: i64,
+    pub subversion: String,
+    pub protocolversion: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PeerInfo {
     pub id: i64,
     pub addr: String,

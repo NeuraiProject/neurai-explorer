@@ -81,6 +81,7 @@ model NetworkStats {
   priceUsd     Decimal? @map("price_usd") @db.Decimal
   marketCapUsd Decimal? @map("market_cap_usd") @db.Decimal
   peersData    Json?    @map("peers_data")
+  nodeVersion  String?  @map("node_version")
   updatedAt    Int?     @map("updated_at")
 
   @@map("network_stats")
