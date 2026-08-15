@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, Transaction as SqlxTransaction};
 use tracing::debug;
 
 use crate::error::Result;
@@ -15,6 +15,24 @@ impl DailyStatsRepository {
         .await?;
 
         Ok(row.map(|(date,)| date))
+    }
+
+    /// Drop the daily rows covering blocks at or above `height`, so that they
+    /// are recomputed by the next aggregation after a rollback.
+    pub async fn delete_from_block_height_tx(
+        tx: &mut SqlxTransaction<'_, Postgres>,
+        height: i64,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            DELETE FROM daily_stats
+            WHERE date >= (SELECT to_timestamp(MIN(time))::date FROM blocks WHERE height >= $1)
+            "#,
+        )
+        .bind(height as i32)
+        .execute(&mut **tx)
+        .await?;
+        Ok(result.rows_affected())
     }
 
     pub async fn aggregate_from_date(pool: &PgPool, date: NaiveDate) -> Result<()> {

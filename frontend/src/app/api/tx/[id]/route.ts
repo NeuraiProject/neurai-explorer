@@ -1,23 +1,15 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { getTransactionJson } from '@/lib/services/transaction';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
         const { id } = await params;
 
-        const tx = await prisma.transaction.findUnique({
-            where: { txid: id },
-        });
+        const data = await getTransactionJson(id);
 
-        if (!tx) {
+        if (!data) {
             return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
         }
-
-        const data = {
-            ...(tx.rawData as object),
-            blocktime: tx.time,
-            height: tx.blockHeight,
-        };
 
         return NextResponse.json(data);
     } catch (error) {

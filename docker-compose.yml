@@ -24,7 +24,7 @@ services:
       NEURAI_RPC_BIND: 0.0.0.0
       NEURAI_RPC_ALLOW_IP: 0.0.0.0/0
       NEURAI_RPC_WORK_QUEUE: ${RPC_WORKQUEUE:-1024}
-      NEURAI_RPC_THREADS: ${RPC_THREADS:-256}
+      NEURAI_RPC_THREADS: ${RPC_THREADS:-64}
       NEURAI_LISTEN: 0
       NEURAI_DISABLE_WALLET: 1
       # Full indexes required by the syncer.
@@ -63,6 +63,25 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-neurai}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-neurai123}
       POSTGRES_DB: ${POSTGRES_DB:-neuraidb}
+    # The stock image is tuned for tiny machines (128MB shared_buffers, 1GB
+    # max_wal_size). During the initial sync the syncer bulk-loads millions of
+    # rows; a larger buffer pool and less frequent checkpoints keep the write
+    # path from stalling. Adjust PG_SHARED_BUFFERS to ~25% of the RAM you can
+    # give to PostgreSQL.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-512MB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-1536MB}
+      - -c
+      - maintenance_work_mem=256MB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - checkpoint_completion_target=0.9
+      - -c
+      - wal_compression=on
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 5s
@@ -94,6 +113,13 @@ services:
       RPC_PASS: ${RPC_PASS:-neuraipassword}
       DATABASE_URL: postgresql://${POSTGRES_USER:-neurai}:${POSTGRES_PASSWORD:-neurai123}@postgres:5432/${POSTGRES_DB:-neuraidb}
       RUST_LOG: info,sqlx=warn,reqwest=warn
+      # Blocks and previous transactions are fetched through the node's REST
+      # interface (NEURAI_REST=1 above), which parallelises much better than
+      # the getblock/getrawtransaction RPCs. Set to 0 to force RPC only.
+      RPC_USE_REST: ${RPC_USE_REST:-1}
+      # Set to 1 (once) to let a new syncer version wipe data written with an
+      # older schema and resync from genesis. Otherwise it stops and says so.
+      RESYNC_ON_SCHEMA_CHANGE: ${RESYNC_ON_SCHEMA_CHANGE:-0}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:

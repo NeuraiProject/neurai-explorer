@@ -15,14 +15,35 @@ use crate::config::Config;
 use crate::db::create_pool;
 use crate::error::Result;
 use crate::rpc::RpcClient;
-use crate::sync::{DailyStatsSync, MempoolSync, PriceSync, StatsSync, SyncEngine};
+use crate::sync::{rollback_from_height, DailyStatsSync, MempoolSync, PriceSync, StatsSync, SyncEngine};
+
+/// Command line: `neurai-syncer` runs the syncer; `neurai-syncer --rollback
+/// <height>` undoes blocks >= height (as after a reorg) and exits.
+enum Command {
+    Run,
+    Rollback(i64),
+}
+
+fn parse_args() -> std::result::Result<Command, String> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.as_slice() {
+        [] => Ok(Command::Run),
+        [flag, height] if flag == "--rollback" => height
+            .parse::<i64>()
+            .map(Command::Rollback)
+            .map_err(|_| format!("invalid height '{}'", height)),
+        _ => Err("usage: neurai-syncer [--rollback <height>]".to_string()),
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     init_logging();
 
-    info!("Neurai Syncer v3.0.0 (Rust) starting...");
+    let command = parse_args().map_err(crate::error::SyncerError::Config)?;
+
+    info!("Neurai Syncer v3.2.0 (Rust) starting...");
 
     // Load configuration
     let config = Arc::new(Config::load("config.json")?);
@@ -35,12 +56,24 @@ async fn main() -> Result<()> {
     // Create database pool
     let pool = create_pool(&config.database).await?;
 
+    if let Command::Rollback(height) = command {
+        info!(height, "Rolling back blocks >= height (operator request)");
+        let report = rollback_from_height(&pool, height).await?;
+        info!(?report, "Done; start the syncer normally to resync from there");
+        pool.close().await;
+        return Ok(());
+    }
+
     // Create RPC client
-    let rpc = Arc::new(RpcClient::new(&config.rpc)?);
+    let mut rpc = RpcClient::new(&config.rpc)?;
 
     // Test RPC connection
     let block_count = rpc.get_block_count().await?;
     info!(block_count, "Connected to node");
+
+    // Use the node's REST interface for block/tx fetches when available
+    rpc.detect_rest().await;
+    let rpc = Arc::new(rpc);
 
     // Create shutdown channel
     let (shutdown_tx, shutdown_rx) = watch::channel(false);

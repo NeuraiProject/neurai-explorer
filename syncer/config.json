@@ -1,12 +1,16 @@
 {
     "sync": {
         "networkStatsInterval": 5000,
+        "supplyInterval": 600000,
         "mempoolInterval": 10000,
         "dailyStatsInterval": 600000,
         "mainLoopNewBlockWait": 10000,
         "mainLoopErrorWait": 5000,
-        "batchSize": 50,
-        "inputChunkSize": 100
+        "batchSize": 250,
+        "blockFetchConcurrency": 16,
+        "inputFetchConcurrency": 32,
+        "prefetchBatches": 2,
+        "asyncCommit": true
     },
     "api": {
         "coingeckoUrl": "https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd",

@@ -112,11 +112,13 @@ Rust-based service responsible for blockchain synchronization and indexing.
 PostgreSQL instance for indexed blockchain data persistence.
 
 - **Engine**: PostgreSQL 18.1 (Alpine Linux variant)
-- **Schema Management**: Controlled via Prisma migrations
+- **Schema Management**: SQL migrations in `syncer/migrations/`, applied by
+  the syncer at startup (the frontend's Prisma schema only mirrors them)
 - **Indexed Data**:
-  - Block data (height, hash, timestamp, transaction count)
-  - Transaction records (txid, block reference, inputs/outputs)
-  - Address ledgers and balance tracking
+  - Block headers (height, hash, timestamp, transaction count, txids)
+  - Transactions (decoded JSON, raw bytes, position in block)
+  - Per-transaction history of what each address received/spent, in XNA and
+    in assets; address and asset ledgers are sums of that history
 
 ### Node (`neurai-node`)
 
@@ -192,6 +194,55 @@ DATABASE_URL=postgres://user:pass@postgres:5432/neurai
 
 # Logging
 RUST_LOG=info,sqlx=warn,reqwest=warn
+
+# Fetch blocks/previous transactions through the node's REST interface (default 1)
+RPC_USE_REST=1
+```
+
+Sync tuning lives in `syncer/config.json` (rebuild the image after changing it):
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `batchSize` | 250 | Blocks fetched and written per database transaction |
+| `blockFetchConcurrency` | 16 | Concurrent block requests to the node |
+| `inputFetchConcurrency` | 32 | Concurrent previous-transaction requests |
+| `prefetchBatches` | 2 | Batches fetched ahead while the previous one is written |
+| `asyncCommit` | true | Commit batches with `synchronous_commit=off` (a crash only re-syncs the last batches; the database never ends up inconsistent) |
+| `supplyInterval` | 600000 | ms between `gettxoutsetinfo` calls (scans the node's whole UTXO set) |
+
+During the initial sync the log prints a `Sync progress` line every 10 s with
+the current height, blocks/s and an ETA.
+
+##### Database layout (schema v4)
+
+- Amounts are parsed exactly from the node's JSON (no `f64` step) and stored
+  as `NUMERIC` with 8 decimals.
+- `blocks.raw_data` holds the block header with `tx` as a list of txids; the
+  decoded transactions are in `transactions.raw_data` (ordered by `tx_index`),
+  and the serialized bytes in `transactions.raw_hex`.
+- `tx_addresses.received/sent` and `tx_address_assets.delta` record what each
+  address moved in each transaction, so `addresses`/`address_assets` balances
+  are sums of the history and `addresses.tx_count` counts distinct
+  transactions.
+
+- `asset_events` keeps every issuance/reissuance output; the `assets` row is
+  the fold of them.
+
+A syncer whose schema version differs from the one stored in the database
+refuses to start; set `RESYNC_ON_SCHEMA_CHANGE=1` for one start to wipe the
+indexed data and resync from genesis.
+
+##### Reorgs and manual rollback
+
+Because balances are sums of the history rows, a chain reorg is undone
+exactly: the syncer subtracts the history of the orphaned blocks, deletes
+them, rebuilds the affected assets from their remaining events and resumes
+from the fork. The same operation is available by hand (for example after
+restoring an older node datadir):
+
+```bash
+docker compose run --rm syncer neurai-syncer --rollback 1234567   # undo blocks >= 1234567
+docker compose up -d syncer                                        # resync from there
 ```
 
 #### Frontend Configuration
@@ -217,7 +268,7 @@ NEURAI_IMAGE_TAG=v1.0.6   # Docker Hub tag to run
 RPC_USER=neuraiuser       # shared with syncer and frontend
 RPC_PASS=neuraipassword
 RPC_WORKQUEUE=1024
-RPC_THREADS=256
+RPC_THREADS=64            # HTTP worker threads shared by RPC and REST
 NODE_DB_CACHE=128         # MB; raise it for a faster initial sync
 ```
 
@@ -250,16 +301,48 @@ docker compose up -d
 Otherwise remove the volume (`docker volume rm neurai-explorer_node-data`) and
 let the node sync from scratch.
 
+##### Upgrading the explorer database
+
+The layout of the indexed data has a version (`sync_state.schema_version`,
+currently 4). When a new syncer image needs a different layout, it does not
+try to convert the existing rows: it stops at startup with a message asking
+for a resync. Rebuild the images and resync in one go:
+
+```bash
+git pull
+docker compose build syncer frontend
+docker compose stop syncer frontend
+RESYNC_ON_SCHEMA_CHANGE=1 docker compose up -d syncer   # wipes the indexed data, syncs from genesis
+docker compose up -d frontend
+docker compose logs -f syncer                          # "Sync progress" lines show blocks/s and ETA
+```
+
+`RESYNC_ON_SCHEMA_CHANGE=1` is only honoured when the stored version differs,
+and the syncer warns at every start while it is set, so it can also live in
+`.env`; put it back to `0` once the resync has started. `network_stats`
+(prices, peers) is kept; everything else is rebuilt from the node.
+
+Removing the database volume instead (`docker compose down`,
+`docker volume rm neurai-explorer_pg-data`, `docker compose up -d`) has the
+same effect and also resets PostgreSQL itself.
+
+The node is not touched by an explorer upgrade; only the explorer tables are
+re-read from it. With the batched syncer and REST fetching the full resync of
+mainnet is a matter of an hour or so, mostly bounded by the node.
+
 ### Resource Limits
 
-Default Docker resource configuration:
+Default Docker resource configuration (`docker-compose.yml`):
 
-| Service | Memory Limit | CPU Limit |
-|---------|--------------|-----------|
-| Frontend | 1GB | - |
-| Syncer | 2GB | - |
-| PostgreSQL | 2GB | - |
-| Node | 4GB | - |
+| Service | Memory Limit | Memory Reservation |
+|---------|--------------|--------------------|
+| Syncer | 12GB | 2GB |
+| Frontend | - | - |
+| PostgreSQL | - (tuned via `PG_SHARED_BUFFERS` / `PG_EFFECTIVE_CACHE_SIZE`) | - |
+| Node | - (`NODE_DB_CACHE` sets its database cache) | - |
+
+The syncer itself needs a few hundred MB during the initial sync (a couple of
+batches in flight plus the previous-outputs cache); the limit is generous.
 
 ---
 

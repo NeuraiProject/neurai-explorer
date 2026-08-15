@@ -47,7 +47,14 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
         return <div className="text-center p-8 text-destructive">Address not found or error loading data.</div>;
     }
 
+    /**
+     * Net XNA moved by the address in a tx. The history rows carry the exact
+     * received/sent amounts; walking vin/vout is only a fallback.
+     */
     function getTxNetAmount(tx: Transaction, address: string) {
+        if (tx.received !== undefined && tx.sent !== undefined) {
+            return parseFloat(tx.received) - parseFloat(tx.sent);
+        }
         const received = (tx.vout || []).reduce((sum: number, v: TransactionOutput) => {
             const addresses = v?.scriptPubKey?.addresses || [];
             return addresses.includes(address) ? sum + (parseFloat(v.value) || 0) : sum;
@@ -59,12 +66,11 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
         return received - sent;
     }
 
-    // Fallback to Blockbook tokens if RPC fails or returns nothing, 
-    // although Blockbook might not have full asset support as we discovered.
-    // We will prioritize the RPC data if available.
-
-    // NOTE: api.getAddress returns 'tokens' which might be empty if Blockbook isn't indexing assets.
-    // We want to display the RPC fetched assets.
+    function formatAssetDelta(delta: string) {
+        const n = parseFloat(delta);
+        const sign = n > 0 ? "+" : n < 0 ? "-" : "";
+        return `${sign}${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 8 })}`;
+    }
 
     return (
         <div className="flex flex-col gap-8 container mx-auto px-4 py-8">
@@ -134,6 +140,16 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                 ? "text-red-600 dark:text-red-400"
                                 : "text-muted-foreground";
                         const amountLabel = `${isIncoming ? "+" : isOutgoing ? "-" : ""}${Math.abs(netAmount).toFixed(3)} XNA`;
+                        const assetLabels = (tx.assetDeltas ?? [])
+                            .filter(a => parseFloat(a.delta) !== 0)
+                            .map(a => {
+                                const n = parseFloat(a.delta);
+                                return {
+                                    asset: a.asset,
+                                    label: formatAssetDelta(a.delta),
+                                    className: n > 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400",
+                                };
+                            });
                         const dateTime = new Date(tx.blocktime * 1000).toLocaleString(undefined, {
                             year: '2-digit',
                             month: 'numeric',
@@ -152,11 +168,23 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                     </div>
                                     <div className="hidden lg:flex flex-col items-end gap-1 pr-2">
                                         <span className={`font-mono font-bold ${amountClass}`}>{amountLabel}</span>
+                                        {assetLabels.map(a => (
+                                            <span key={a.asset} className={`font-mono text-sm ${a.className}`}>
+                                                {a.label} <Link href={`/asset/${a.asset}`} className="hover:underline">{a.asset}</Link>
+                                            </span>
+                                        ))}
                                         <span className="text-sm text-muted-foreground">{dateTime}</span>
                                     </div>
                                     <div className="flex items-center justify-between text-sm text-muted-foreground lg:hidden">
                                         <span>{dateTime}</span>
-                                        <span className={`font-mono font-bold ${amountClass}`}>{amountLabel}</span>
+                                        <span className="flex flex-col items-end">
+                                            <span className={`font-mono font-bold ${amountClass}`}>{amountLabel}</span>
+                                            {assetLabels.map(a => (
+                                                <span key={a.asset} className={`font-mono ${a.className}`}>
+                                                    {a.label} <Link href={`/asset/${a.asset}`} className="hover:underline">{a.asset}</Link>
+                                                </span>
+                                            ))}
+                                        </span>
                                     </div>
                                 </div>
                             </Card>

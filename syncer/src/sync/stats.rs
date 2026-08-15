@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
@@ -15,6 +16,10 @@ pub struct StatsSync {
     rpc: Arc<RpcClient>,
     pool: DbPool,
     shutdown_rx: watch::Receiver<bool>,
+    /// When `gettxoutsetinfo` was last run. It scans the node's whole UTXO
+    /// set (seconds of I/O, and it flushes the node's coin cache first), so it
+    /// is refreshed on its own, much slower, schedule than the other stats.
+    last_supply_at: Mutex<Option<Instant>>,
 }
 
 impl StatsSync {
@@ -29,11 +34,16 @@ impl StatsSync {
             rpc,
             pool,
             shutdown_rx,
+            last_supply_at: Mutex::new(None),
         }
     }
 
     pub async fn run(&mut self) -> Result<()> {
-        info!("Starting network stats sync");
+        info!(
+            interval_ms = self.config.sync.network_stats_interval,
+            supply_interval_ms = self.config.sync.supply_interval,
+            "Starting network stats sync"
+        );
 
         run_interval_loop(
             &self.shutdown_rx,
@@ -60,17 +70,24 @@ impl StatsSync {
         // Fetch peer info
         let peers = self.rpc.get_peer_info().await?;
 
-        // Fetch UTXO set info for supply
-        let txout_info = self.rpc.get_tx_out_set_info().await?;
+        // Fetch UTXO set info for supply, only when due
+        let supply = if self.supply_due() {
+            let txout_info = self.rpc.get_tx_out_set_info().await?;
+            *self.last_supply_at.lock().expect("supply timer poisoned") = Some(Instant::now());
+            debug!(supply = txout_info.total_amount, "Supply refreshed");
+            Some(txout_info.total_amount)
+        } else {
+            None
+        };
 
-        // Update database
+        // Update database (keeps the stored supply when none was fetched)
         NetworkStatsRepository::update(
             &self.pool,
             mining_info.difficulty,
             mining_info.networkhashps,
             connections,
             mining_info.blocks,
-            txout_info.total_amount,
+            supply,
             &peers,
             &network_info.subversion,
         )
@@ -85,6 +102,14 @@ impl StatsSync {
         );
 
         Ok(())
+    }
+
+    fn supply_due(&self) -> bool {
+        let interval = Duration::from_millis(self.config.sync.supply_interval);
+        match *self.last_supply_at.lock().expect("supply timer poisoned") {
+            None => true,
+            Some(last) => last.elapsed() >= interval,
+        }
     }
 }
 

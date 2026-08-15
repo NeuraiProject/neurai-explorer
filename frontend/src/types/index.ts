@@ -52,9 +52,22 @@ export interface Transaction {
     confirmations?: number;
     vin: TransactionInput[];
     vout: TransactionOutput[];
+    /** Inputs minus outputs; undefined when an input value is unknown */
     fee?: number;
     totalOutput?: number;
     hex?: string;
+    // Present in an address history: what that address moved in this tx
+    /** XNA received by the address */
+    received?: string;
+    /** XNA spent by the address */
+    sent?: string;
+    /** Asset units moved by the address (+ received, - sent) */
+    assetDeltas?: AssetDelta[];
+}
+
+export interface AssetDelta {
+    asset: string;
+    delta: string;
 }
 
 export interface TransactionInput {

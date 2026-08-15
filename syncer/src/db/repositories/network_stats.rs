@@ -1,6 +1,7 @@
 use bigdecimal::{BigDecimal, ToPrimitive};
 use sqlx::PgPool;
 
+use super::to_decimal;
 use crate::error::Result;
 use crate::types::PeerInfo;
 
@@ -13,13 +14,13 @@ impl NetworkStatsRepository {
         hashrate: f64,
         connections: i32,
         height: i64,
-        supply: f64,
+        supply: Option<f64>,
         peers_data: &[PeerInfo],
         node_version: &str,
     ) -> Result<()> {
-        let difficulty_bd = BigDecimal::try_from(difficulty).unwrap_or_default();
-        let hashrate_bd = BigDecimal::try_from(hashrate).unwrap_or_default();
-        let supply_bd = BigDecimal::try_from(supply).unwrap_or_default();
+        let difficulty_bd = to_decimal(difficulty);
+        let hashrate_bd = to_decimal(hashrate);
+        let supply_bd = supply.map(to_decimal);
         let peers_json = serde_json::to_value(peers_data)?;
         let now = chrono::Utc::now().timestamp() as i32;
 
@@ -32,7 +33,7 @@ impl NetworkStatsRepository {
                 hashrate = $2,
                 connections = $3,
                 height = $4,
-                supply = $5,
+                supply = COALESCE($5, network_stats.supply),
                 peers_data = $6,
                 node_version = $7,
                 updated_at = $8
@@ -57,8 +58,8 @@ impl NetworkStatsRepository {
         price_usd: f64,
         market_cap_usd: f64,
     ) -> Result<()> {
-        let price_bd = BigDecimal::try_from(price_usd).unwrap_or_default();
-        let mcap_bd = BigDecimal::try_from(market_cap_usd).unwrap_or_default();
+        let price_bd = to_decimal(price_usd);
+        let mcap_bd = to_decimal(market_cap_usd);
         let now = chrono::Utc::now().timestamp() as i32;
 
         sqlx::query(

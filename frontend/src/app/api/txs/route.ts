@@ -31,6 +31,8 @@ export async function GET(request: Request) {
             orderBy: { time: 'desc' },
             take: limit,
             skip: skip,
+            // rawHex is only needed by getrawtransaction; keep it out of listings
+            select: { txid: true, blockHeight: true, time: true, totalOutput: true, rawData: true },
         });
 
         const result = transactions.map(row => ({

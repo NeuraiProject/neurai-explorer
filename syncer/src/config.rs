@@ -23,12 +23,14 @@ pub struct ConfigFile {
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
 pub struct RpcConfigFile {
     pub user: Option<String>,
     pub pass: Option<String>,
     pub host: Option<String>,
     pub port: Option<u16>,
     pub timeout: Option<u64>,
+    pub use_rest: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -47,6 +49,9 @@ pub struct RpcConfig {
     pub host: String,
     pub port: u16,
     pub timeout: u64,
+    /// Fetch blocks and transactions through the node's REST interface
+    /// (`-rest=1`) when it is available. Falls back to RPC automatically.
+    pub use_rest: bool,
 }
 
 fn default_rpc_timeout() -> u64 {
@@ -88,10 +93,27 @@ pub struct SyncConfig {
     pub main_loop_new_block_wait: u64,
     #[serde(default = "default_main_loop_error_wait")]
     pub main_loop_error_wait: u64,
+    /// Blocks fetched and written per database transaction.
     #[serde(default = "default_batch_size")]
     pub batch_size: usize,
-    #[serde(default = "default_input_chunk_size")]
-    pub input_chunk_size: usize,
+    /// Concurrent `getblock` requests while fetching a batch.
+    #[serde(default = "default_block_fetch_concurrency")]
+    pub block_fetch_concurrency: usize,
+    /// Concurrent `getrawtransaction` requests while resolving inputs.
+    #[serde(default = "default_input_fetch_concurrency")]
+    pub input_fetch_concurrency: usize,
+    /// Batches fetched ahead of the database writer.
+    #[serde(default = "default_prefetch_batches")]
+    pub prefetch_batches: usize,
+    /// Commit batches with `synchronous_commit = off` (no fsync wait). Safe:
+    /// data and sync state are committed atomically, a crash only re-syncs
+    /// the last blocks.
+    #[serde(default = "default_async_commit")]
+    pub async_commit: bool,
+    /// Interval for the expensive `gettxoutsetinfo` (supply) call, which
+    /// scans the whole UTXO set on the node.
+    #[serde(default = "default_supply_interval")]
+    pub supply_interval: u64,
 }
 
 fn default_network_stats_interval() -> u64 {
@@ -115,11 +137,27 @@ fn default_main_loop_error_wait() -> u64 {
 }
 
 fn default_batch_size() -> usize {
-    5
+    250
 }
 
-fn default_input_chunk_size() -> usize {
-    50
+fn default_block_fetch_concurrency() -> usize {
+    16
+}
+
+fn default_input_fetch_concurrency() -> usize {
+    32
+}
+
+fn default_prefetch_batches() -> usize {
+    2
+}
+
+fn default_async_commit() -> bool {
+    true
+}
+
+fn default_supply_interval() -> u64 {
+    600000
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -183,6 +221,12 @@ impl ConfigFile {
                 self.rpc.timeout = Some(timeout);
             }
         }
+        if let Ok(use_rest) = std::env::var("RPC_USE_REST") {
+            self.rpc.use_rest = Some(matches!(
+                use_rest.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            ));
+        }
 
         if let Ok(url) = std::env::var("DATABASE_URL") {
             if let Some(parsed) = Self::parse_database_url(&url) {
@@ -226,6 +270,7 @@ impl RpcConfig {
         })?;
         let port = raw.port.unwrap_or(19001);
         let timeout = raw.timeout.unwrap_or_else(default_rpc_timeout);
+        let use_rest = raw.use_rest.unwrap_or(true);
 
         Ok(RpcConfig {
             user,
@@ -233,6 +278,7 @@ impl RpcConfig {
             host,
             port,
             timeout,
+            use_rest,
         })
     }
 }

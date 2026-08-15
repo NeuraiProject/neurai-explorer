@@ -1,56 +1,69 @@
+use bigdecimal::BigDecimal;
 use sqlx::{Postgres, Transaction as SqlxTransaction};
 
 use crate::error::Result;
-use crate::types::Transaction;
-use super::to_decimal;
+
+/// One row of the `transactions` table, ready to be written.
+pub struct TransactionRow {
+    pub txid: String,
+    pub block_height: i32,
+    /// Position of the transaction inside its block (0 = coinbase).
+    pub tx_index: i32,
+    pub time: i32,
+    pub total_output: BigDecimal,
+    /// Decoded transaction JSON, without `hex`.
+    pub raw_data: serde_json::Value,
+    /// Serialized transaction bytes.
+    pub raw_hex: Option<Vec<u8>>,
+}
 
 pub struct TransactionsRepository;
 
 impl TransactionsRepository {
-    pub async fn insert_tx(
+    /// Insert (or replace) many transactions in a single statement.
+    ///
+    /// `rows` must not contain the same txid twice (Postgres rejects an
+    /// `ON CONFLICT DO UPDATE` that touches a row twice in one statement).
+    pub async fn insert_many_tx(
         tx: &mut SqlxTransaction<'_, Postgres>,
-        transaction: &Transaction,
-        block_height: i64,
-        block_time: i64,
-        total_output: f64,
+        rows: &[TransactionRow],
     ) -> Result<()> {
-        let total = to_decimal(total_output);
-        let raw_data = serde_json::to_value(transaction)?;
+        if rows.is_empty() {
+            return Ok(());
+        }
+
+        let txids: Vec<&str> = rows.iter().map(|r| r.txid.as_str()).collect();
+        let heights: Vec<i32> = rows.iter().map(|r| r.block_height).collect();
+        let indexes: Vec<i32> = rows.iter().map(|r| r.tx_index).collect();
+        let times: Vec<i32> = rows.iter().map(|r| r.time).collect();
+        let totals: Vec<BigDecimal> = rows.iter().map(|r| r.total_output.clone()).collect();
+        let raw_data: Vec<serde_json::Value> = rows.iter().map(|r| r.raw_data.clone()).collect();
+        let raw_hex: Vec<Option<&[u8]>> = rows.iter().map(|r| r.raw_hex.as_deref()).collect();
 
         sqlx::query(
             r#"
-            INSERT INTO transactions (txid, block_height, time, total_output, raw_data)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO transactions (txid, block_height, tx_index, time, total_output, raw_data, raw_hex)
+            SELECT * FROM UNNEST(
+                $1::text[], $2::int[], $3::int[], $4::int[], $5::numeric[], $6::jsonb[], $7::bytea[]
+            )
             ON CONFLICT (txid) DO UPDATE SET
                 block_height = EXCLUDED.block_height,
+                tx_index = EXCLUDED.tx_index,
                 time = EXCLUDED.time,
                 total_output = EXCLUDED.total_output,
-                raw_data = EXCLUDED.raw_data
+                raw_data = EXCLUDED.raw_data,
+                raw_hex = EXCLUDED.raw_hex
             "#,
         )
-        .bind(&transaction.txid)
-        .bind(block_height as i32)
-        .bind(block_time as i32)
-        .bind(&total)
+        .bind(&txids)
+        .bind(&heights)
+        .bind(&indexes)
+        .bind(&times)
+        .bind(&totals)
         .bind(&raw_data)
+        .bind(&raw_hex)
         .execute(&mut **tx)
         .await?;
-
-        Ok(())
-    }
-
-    pub async fn update_raw_data_tx(
-        tx: &mut SqlxTransaction<'_, Postgres>,
-        txid: &str,
-        transaction: &Transaction,
-    ) -> Result<()> {
-        let raw_data = serde_json::to_value(transaction)?;
-
-        sqlx::query("UPDATE transactions SET raw_data = $1 WHERE txid = $2")
-            .bind(&raw_data)
-            .bind(txid)
-            .execute(&mut **tx)
-            .await?;
 
         Ok(())
     }

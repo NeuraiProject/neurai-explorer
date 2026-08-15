@@ -24,14 +24,21 @@ model Block {
 model Transaction {
   txid        String   @id
   blockHeight Int?     @map("block_height")
+  /// Position inside the block (0 = coinbase)
+  txIndex     Int      @default(0) @map("tx_index")
   time        Int?
   totalOutput Decimal? @map("total_output") @db.Decimal
+  /// Decoded transaction JSON (without `hex`, see rawHex)
   rawData     Json?    @map("raw_data")
+  /// Serialized transaction bytes
+  rawHex      Bytes?   @map("raw_hex")
 
-  block       Block?   @relation(fields: [blockHeight], references: [height], onDelete: Cascade)
-  txAddresses TxAddress[]
+  block            Block?   @relation(fields: [blockHeight], references: [height], onDelete: Cascade)
+  txAddresses      TxAddress[]
+  txAddressAssets  TxAddressAsset[]
+  assetEvents      AssetEvent[]
 
-  @@index([blockHeight], name: "idx_tx_height")
+  @@index([blockHeight, txIndex], name: "idx_tx_height_index")
   @@map("transactions")
 }
 
@@ -42,8 +49,9 @@ model Address {
   totalSent     Decimal @default(0) @map("total_sent") @db.Decimal
   txCount       Int     @default(0) @map("tx_count")
 
-  txAddresses   TxAddress[]
-  addressAssets AddressAsset[]
+  txAddresses     TxAddress[]
+  addressAssets   AddressAsset[]
+  txAddressAssets TxAddressAsset[]
 
   @@index([balance(sort: Desc)], name: "idx_addr_balance")
   @@map("addresses")
@@ -54,6 +62,10 @@ model TxAddress {
   address     String
   blockHeight Int?   @map("block_height")
   time        Int?
+  /// XNA received by the address in this transaction
+  received    Decimal @default(0) @db.Decimal
+  /// XNA spent by the address in this transaction
+  sent        Decimal @default(0) @db.Decimal
 
   transaction Transaction @relation(fields: [txid], references: [txid], onDelete: Cascade)
   addressRef  Address     @relation(fields: [address], references: [address], onDelete: Cascade)
@@ -61,7 +73,27 @@ model TxAddress {
   @@id([txid, address])
   @@index([address], name: "idx_txaddr_address")
   @@index([time(sort: Desc)], name: "idx_txaddr_time")
+  @@index([blockHeight], name: "idx_txaddr_height")
   @@map("tx_addresses")
+}
+
+/// Asset units moved for an address in a transaction (+ received, - spent)
+model TxAddressAsset {
+  txid        String
+  address     String
+  assetName   String  @map("asset_name")
+  delta       Decimal @db.Decimal
+  blockHeight Int?    @map("block_height")
+
+  transaction Transaction @relation(fields: [txid], references: [txid], onDelete: Cascade)
+  addressRef  Address     @relation(fields: [address], references: [address], onDelete: Cascade)
+  asset       Asset       @relation(fields: [assetName], references: [name], onDelete: Cascade)
+
+  @@id([txid, address, assetName])
+  @@index([address], name: "idx_txaa_address")
+  @@index([assetName], name: "idx_txaa_asset")
+  @@index([blockHeight], name: "idx_txaa_height")
+  @@map("tx_address_assets")
 }
 
 model SyncState {
@@ -107,10 +139,35 @@ model Asset {
   blockHeight Int?     @map("block_height")
   txid        String?
 
-  addressAssets AddressAsset[]
+  addressAssets   AddressAsset[]
+  txAddressAssets TxAddressAsset[]
+  events          AssetEvent[]
 
   @@index([name], name: "idx_assets_name")
   @@map("assets")
+}
+
+/// Issuance / reissuance outputs, in chain order; the Asset row is their fold
+model AssetEvent {
+  txid        String
+  voutN       Int      @map("vout_n")
+  assetName   String   @map("asset_name")
+  blockHeight Int      @map("block_height")
+  txIndex     Int      @map("tx_index")
+  type        String
+  amount      Decimal  @db.Decimal
+  units       Int
+  reissuable  Boolean
+  hasIpfs     Boolean  @map("has_ipfs")
+  ipfsHash    String?  @map("ipfs_hash")
+
+  transaction Transaction @relation(fields: [txid], references: [txid], onDelete: Cascade)
+  asset       Asset       @relation(fields: [assetName], references: [name], onDelete: Cascade)
+
+  @@id([txid, voutN])
+  @@index([assetName], name: "idx_asset_events_name")
+  @@index([blockHeight], name: "idx_asset_events_height")
+  @@map("asset_events")
 }
 
 model AddressAsset {

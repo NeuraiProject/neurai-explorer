@@ -1,61 +1,19 @@
 import { NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { getAddressData } from '@/lib/services/address';
 
 export async function GET(request: Request, { params }: { params: Promise<{ address: string }> }) {
     try {
         const { address } = await params;
         const { searchParams } = new URL(request.url);
-        const page = parseInt(searchParams.get('page') || '1');
-        const pageSize = parseInt(searchParams.get('pageSize') || '50');
-        const offset = (page - 1) * pageSize;
+        const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+        const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '50') || 50));
 
-        // 1. Get Address Summary
-        const addrData = await prisma.address.findUnique({
-            where: { address },
-        });
-
-        if (!addrData) {
-            // Return empty structure for new/unused addresses
-            return NextResponse.json({
-                address,
-                balance: "0",
-                totalReceived: "0",
-                totalSent: "0",
-                txs: 0,
-                transactions: [],
-                totalPages: 0,
-                page,
-            });
+        const data = await getAddressData(address, page, pageSize);
+        if (!data) {
+            return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
         }
 
-        // 2. Get Transactions (History) with JOIN
-        const txAddresses = await prisma.txAddress.findMany({
-            where: { address },
-            orderBy: { time: 'desc' },
-            take: pageSize,
-            skip: offset,
-            include: {
-                transaction: true,
-            },
-        });
-
-        // Enrich txs with stored time/height
-        const transactions = txAddresses.map(ta => ({
-            ...(ta.transaction.rawData as object),
-            blocktime: ta.transaction.time,
-            height: ta.transaction.blockHeight,
-        }));
-
-        return NextResponse.json({
-            address: addrData.address,
-            balance: addrData.balance.toString(),
-            totalReceived: addrData.totalReceived.toString(),
-            totalSent: addrData.totalSent.toString(),
-            txs: addrData.txCount,
-            transactions: transactions,
-            totalPages: Math.ceil(addrData.txCount / pageSize),
-            page: page,
-        });
+        return NextResponse.json(data);
     } catch (error) {
         console.error('Address API Error:', error);
         return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

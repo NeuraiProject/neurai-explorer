@@ -33,7 +33,7 @@ export default function TxPage() {
             </div>
 
             <Card title="Summary">
-                <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Block Height</span>
                         <Link href={`/block/${tx.height}`} className="text-primary font-bold hover:underline">{tx.height}</Link>
@@ -46,7 +46,18 @@ export default function TxPage() {
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Output</span>
                         <span className="font-mono font-bold text-green-600 dark:text-green-400">{totalOutput.toFixed(8)} <span className="text-muted-foreground text-sm font-normal">XNA</span></span>
                     </div>
-                    {/* Fee calculation requires previous outputs, not available in raw tx */}
+                    <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Fee</span>
+                        <span className="font-mono">
+                            {typeof tx.fee === 'number'
+                                ? <>{tx.fee.toFixed(8)} <span className="text-muted-foreground text-sm font-normal">XNA</span></>
+                                : <span className="text-muted-foreground">—</span>}
+                        </span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Confirmations</span>
+                        <span className="font-mono">{tx.confirmations ?? 0}</span>
+                    </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Size</span>
                         <span className="font-mono">{tx.size} bytes</span>

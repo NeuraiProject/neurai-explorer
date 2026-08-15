@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { getBlockJson } from '@/lib/services/block';
 
 // We removed rpcCall import. Everything must come from DB or external APIs (e.g. coingecko)
 
@@ -47,44 +48,44 @@ export async function GET(
             case 'getblock': {
                 const hash = queryParams.hash || args[0];
                 if (!hash) return NextResponse.json({ error: 'Missing hash' }, { status: 400 });
-                const block = await prisma.block.findUnique({
-                    where: { hash },
-                    select: { rawData: true }
-                });
-                if (!block?.rawData) return NextResponse.json({ error: 'Block not found' }, { status: 404 });
-                return NextResponse.json(block.rawData);
+                const block = await getBlockJson({ hash });
+                if (!block) return NextResponse.json({ error: 'Block not found' }, { status: 404 });
+                return NextResponse.json(block);
             }
             case 'getrawtransaction': {
                 const txid = queryParams.txid || args[0];
                 const decrypt = queryParams.decrypt === '1' ? 1 : 0;
                 if (!txid) return NextResponse.json({ error: 'Missing txid' }, { status: 400 });
 
-                // 1. Check Mined Txs
-                let tx = await prisma.transaction.findUnique({
+                // 1. Check Mined Txs (raw bytes live in their own column since schema v4)
+                const mined = await prisma.transaction.findUnique({
                     where: { txid },
-                    select: { rawData: true }
+                    select: { rawData: true, rawHex: decrypt === 0 }
                 });
 
-                // 2. Check Mempool
-                if (!tx) {
+                let rawData: unknown = mined?.rawData ?? null;
+                let hex: string | undefined = mined?.rawHex ? Buffer.from(mined.rawHex).toString('hex') : undefined;
+
+                // 2. Check Mempool (its JSON still carries `hex`)
+                if (!mined) {
                     const mempoolTx = await prisma.mempool.findUnique({
                         where: { txid },
                         select: { rawData: true }
                     });
-                    tx = mempoolTx;
+                    rawData = mempoolTx?.rawData ?? null;
+                    hex = (mempoolTx?.rawData as { hex?: string } | null)?.hex;
                 }
 
-                if (!tx?.rawData) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
+                if (!rawData) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
 
-                const txData = tx.rawData as any;
                 if (decrypt === 0) {
-                    if (txData.hex) {
-                        return new NextResponse(txData.hex, { headers: { 'Content-Type': 'text/plain' } });
+                    if (hex) {
+                        return new NextResponse(hex, { headers: { 'Content-Type': 'text/plain' } });
                     }
                     return NextResponse.json({ error: 'Raw hex not available' }, { status: 501 });
                 }
 
-                return NextResponse.json(txData);
+                return NextResponse.json(rawData);
             }
             case 'getnetworkhashps': {
                 const stats = await prisma.networkStats.findUnique({ where: { id: 1 } });

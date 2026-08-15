@@ -1,87 +1,369 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Mutex;
+
 use futures::stream::{self, StreamExt};
-use tracing::{debug, info, warn};
+use tracing::debug;
 
 use crate::db::repositories::{
-    AddressAssetsRepository, AddressesRepository, AssetsRepository, BlocksRepository,
-    SyncStateRepository, TransactionsRepository, TxAddressesRepository,
+    AddressAssetDelta, AddressAssetsRepository, AddressDelta, AddressesRepository, AssetEventRow,
+    AssetEventsRepository, AssetUpsert, AssetsRepository, BlockRow, BlocksRepository,
+    SyncStateRepository, TransactionRow, TransactionsRepository, TxAddressAssetRow,
+    TxAddressAssetsRepository, TxAddressRow, TxAddressesRepository,
 };
 use crate::db::DbPool;
-use crate::error::Result;
+use crate::error::{Result, SyncerError};
 use crate::rpc::RpcClient;
-use crate::types::{Block, Transaction};
+use crate::types::{decode_hex, Block, Transaction};
 
-use super::cache::TransactionCache;
+use super::cache::{prev_outs_of, PrevOutCache, PrevOuts};
 
-const INPUT_FETCH_CONCURRENCY: usize = 20;
+/// Maximum number of rows sent in one multi-row statement. Keeps individual
+/// statements (and their JSONB payloads) at a reasonable size on busy blocks.
+const STATEMENT_CHUNK_ROWS: usize = 2_000;
 
-pub struct BlockProcessor<'a> {
-    rpc: &'a RpcClient,
-    pool: &'a DbPool,
+/// A run of consecutive blocks together with everything needed to index them
+/// without further RPC calls.
+pub struct PreparedBatch {
+    pub blocks: Vec<Block>,
+    /// Outputs of every transaction referenced by a non-coinbase input in
+    /// `blocks`, keyed by txid.
+    pub prev_outs: HashMap<String, PrevOuts>,
 }
 
-impl<'a> BlockProcessor<'a> {
-    pub fn new(rpc: &'a RpcClient, pool: &'a DbPool) -> Self {
-        Self { rpc, pool }
+impl PreparedBatch {
+    pub fn first(&self) -> &Block {
+        &self.blocks[0]
     }
 
-    pub async fn process_block(
-        &self,
+    pub fn last(&self) -> &Block {
+        &self.blocks[self.blocks.len() - 1]
+    }
+
+    pub fn tx_count(&self) -> usize {
+        self.blocks.iter().map(|b| b.tx.len()).sum()
+    }
+}
+
+/// Resolve the previous outputs spent by `blocks`.
+///
+/// Outputs are looked up, in order, in the batch itself, in the cache, and
+/// finally on the node (concurrently). Every transaction of the batch is added
+/// to the cache so that later batches spending its outputs do not need RPC.
+///
+/// Fails if any referenced transaction cannot be obtained: indexing the batch
+/// without it would silently corrupt address balances.
+pub async fn prepare_batch(
+    rpc: &RpcClient,
+    blocks: Vec<Block>,
+    cache: &Mutex<PrevOutCache>,
+    fetch_concurrency: usize,
+) -> Result<PreparedBatch> {
+    let mut needed: HashSet<&str> = HashSet::new();
+    for block in &blocks {
+        for tx in &block.tx {
+            for vin in &tx.vin {
+                if vin.is_coinbase() {
+                    continue;
+                }
+                if let Some(ref txid) = vin.txid {
+                    needed.insert(txid.as_str());
+                }
+            }
+        }
+    }
+
+    let mut prev_outs: HashMap<String, PrevOuts> = HashMap::with_capacity(needed.len());
+
+    // 1. Outputs created within this batch (and remember them for later batches).
+    {
+        let mut cache = cache.lock().expect("prev-out cache poisoned");
+        for block in &blocks {
+            for tx in &block.tx {
+                let outs = prev_outs_of(tx);
+                if needed.contains(tx.txid.as_str()) {
+                    prev_outs.insert(tx.txid.clone(), outs.clone());
+                }
+                cache.insert(tx.txid.clone(), outs);
+            }
+        }
+
+        // 2. Outputs seen in earlier batches.
+        for txid in &needed {
+            if prev_outs.contains_key(*txid) {
+                continue;
+            }
+            if let Some(outs) = cache.get(txid) {
+                prev_outs.insert((*txid).to_string(), outs);
+            }
+        }
+    }
+
+    // 3. Everything else comes from the node.
+    let missing: Vec<String> = needed
+        .iter()
+        .filter(|txid| !prev_outs.contains_key(**txid))
+        .map(|txid| (*txid).to_string())
+        .collect();
+
+    debug!(
+        needed = needed.len(),
+        from_batch_or_cache = prev_outs.len(),
+        from_rpc = missing.len(),
+        "Resolving previous outputs"
+    );
+
+    if !missing.is_empty() {
+        let fetched: Vec<Result<Transaction>> = stream::iter(missing)
+            .map(|txid| async move { rpc.get_prev_transaction(&txid).await })
+            .buffer_unordered(fetch_concurrency.max(1))
+            .collect()
+            .await;
+
+        let mut cache = cache.lock().expect("prev-out cache poisoned");
+        for result in fetched {
+            let tx = result.map_err(|e| {
+                SyncerError::Sync(format!("Failed to fetch previous transaction: {}", e))
+            })?;
+            let outs = prev_outs_of(&tx);
+            cache.insert(tx.txid.clone(), outs.clone());
+            prev_outs.insert(tx.txid, outs);
+        }
+    }
+
+    Ok(PreparedBatch { blocks, prev_outs })
+}
+
+/// All rows produced by a batch, aggregated so that each table is written with
+/// one statement (or a few chunked ones) instead of one statement per event.
+#[derive(Default)]
+struct BatchRows {
+    blocks: Vec<BlockRow>,
+    transactions: Vec<TransactionRow>,
+    tx_index: HashMap<String, usize>,
+    addresses: HashMap<String, AddressDelta>,
+    assets: HashMap<String, AssetUpsert>,
+    asset_events: Vec<AssetEventRow>,
+    address_assets: HashMap<(String, String), i128>,
+    /// (txid, address) -> what the address received/spent in that tx.
+    tx_addresses: HashMap<(String, String), TxAddressRow>,
+    /// (txid, address, asset) -> asset units moved.
+    tx_address_assets: HashMap<(String, String, String), TxAddressAssetRow>,
+}
+
+impl BatchRows {
+    fn address(&mut self, address: &str) -> &mut AddressDelta {
+        if !self.addresses.contains_key(address) {
+            self.addresses
+                .insert(address.to_string(), AddressDelta::default());
+        }
+        self.addresses.get_mut(address).expect("just inserted")
+    }
+
+    fn address_asset(&mut self, address: &str, asset_name: &str, delta_sats: i128) {
+        *self
+            .address_assets
+            .entry((address.to_string(), asset_name.to_string()))
+            .or_insert(0) += delta_sats;
+    }
+
+    /// An issuance/reissuance output: folded into the `assets` row and kept
+    /// as an event so the row can be rebuilt after a rollback.
+    fn asset_event(&mut self, event: AssetUpsert, txid: &str, vout_n: u32, tx_index: usize) {
+        self.asset_events.push(AssetEventRow {
+            txid: txid.to_string(),
+            vout_n: vout_n as i32,
+            block_height: event.block_height,
+            tx_index: tx_index as i32,
+            event: event.clone(),
+        });
+        match self.assets.get_mut(&event.name) {
+            Some(existing) => existing.merge(event),
+            None => {
+                self.assets.insert(event.name.clone(), event);
+            }
+        }
+    }
+
+    /// History row for (tx, address); created on first use.
+    fn tx_address(&mut self, txid: &str, address: &str, block: &Block) -> &mut TxAddressRow {
+        self.tx_addresses
+            .entry((txid.to_string(), address.to_string()))
+            .or_insert_with(|| TxAddressRow {
+                txid: txid.to_string(),
+                address: address.to_string(),
+                block_height: block.height as i32,
+                time: block.time as i32,
+                received: 0,
+                sent: 0,
+            })
+    }
+
+    fn tx_address_asset(
+        &mut self,
+        txid: &str,
+        address: &str,
+        asset_name: &str,
+        delta_sats: i128,
         block: &Block,
-        tx_cache: &mut TransactionCache,
-    ) -> Result<()> {
-        let height = block.height;
-        debug!(height, tx_count = block.tx.len(), "Processing block");
+    ) {
+        self.tx_address_assets
+            .entry((txid.to_string(), address.to_string(), asset_name.to_string()))
+            .or_insert_with(|| TxAddressAssetRow {
+                txid: txid.to_string(),
+                address: address.to_string(),
+                asset_name: asset_name.to_string(),
+                delta: 0,
+                block_height: block.height as i32,
+            })
+            .delta += delta_sats;
+    }
+
+    fn transaction(&mut self, row: TransactionRow) {
+        match self.tx_index.get(&row.txid) {
+            // Same txid twice in a batch: the later one wins, as with upserts.
+            Some(&idx) => self.transactions[idx] = row,
+            None => {
+                self.tx_index.insert(row.txid.clone(), self.transactions.len());
+                self.transactions.push(row);
+            }
+        }
+    }
+
+    /// `addresses.tx_count` counts distinct transactions, i.e. `tx_addresses`
+    /// rows. Also guarantees an `addresses` row for every address that only
+    /// moved assets (needed by the foreign keys).
+    fn count_transactions_per_address(&mut self) {
+        let addresses: Vec<String> = self
+            .tx_addresses
+            .keys()
+            .map(|(_, address)| address.clone())
+            .collect();
+        for address in addresses {
+            self.address(&address).tx_count += 1;
+        }
+    }
+}
+
+pub struct BatchWriter<'a> {
+    pool: &'a DbPool,
+    async_commit: bool,
+}
+
+impl<'a> BatchWriter<'a> {
+    pub fn new(pool: &'a DbPool, async_commit: bool) -> Self {
+        Self { pool, async_commit }
+    }
+
+    /// Index a batch of blocks and advance the sync state, all in one database
+    /// transaction.
+    pub async fn write(&self, batch: &PreparedBatch) -> Result<()> {
+        let rows = Self::build_rows(batch)?;
+        let last_height = batch.last().height;
 
         let mut db_tx = self.pool.begin().await?;
 
-        // 1. Insert Block
-        BlocksRepository::insert_tx(&mut db_tx, block).await?;
-
-        // 2. Process Transactions
-        for transaction in &block.tx {
-            let total_output = transaction.total_output();
-
-            // Insert Transaction record
-            TransactionsRepository::insert_tx(
-                &mut db_tx,
-                transaction,
-                height,
-                block.time,
-                total_output,
-            )
-            .await?;
-
-            // Process Inputs (Debits)
-            let enriched = self
-                .process_inputs(&mut db_tx, transaction, block, tx_cache)
+        if self.async_commit {
+            // The batch and the sync state are committed atomically, so losing
+            // the last few commits on a crash only means re-syncing those
+            // blocks; the database can never be left inconsistent.
+            sqlx::query("SET LOCAL synchronous_commit TO OFF")
+                .execute(&mut *db_tx)
                 .await?;
-
-            // Update raw_data with enriched transaction
-            TransactionsRepository::update_raw_data_tx(&mut db_tx, &transaction.txid, &enriched)
-                .await?;
-
-            // Process Outputs (Credits)
-            self.process_outputs(&mut db_tx, transaction, block).await?;
         }
 
-        // Update Sync State
-        SyncStateRepository::set_last_height_tx(&mut db_tx, height).await?;
+        // Order matters for the foreign keys:
+        // transactions -> blocks; tx_addresses -> transactions/addresses;
+        // address_assets, tx_address_assets -> addresses/assets.
+        for chunk in rows.blocks.chunks(STATEMENT_CHUNK_ROWS) {
+            BlocksRepository::insert_many_tx(&mut db_tx, chunk).await?;
+        }
+        for chunk in rows.transactions.chunks(STATEMENT_CHUNK_ROWS) {
+            TransactionsRepository::insert_many_tx(&mut db_tx, chunk).await?;
+        }
+
+        let addresses: Vec<(String, AddressDelta)> = rows.addresses.into_iter().collect();
+        for chunk in addresses.chunks(STATEMENT_CHUNK_ROWS) {
+            AddressesRepository::apply_deltas_tx(&mut db_tx, chunk).await?;
+        }
+
+        let assets: Vec<AssetUpsert> = rows.assets.into_values().collect();
+        for chunk in assets.chunks(STATEMENT_CHUNK_ROWS) {
+            AssetsRepository::upsert_many_tx(&mut db_tx, chunk).await?;
+        }
+        for chunk in rows.asset_events.chunks(STATEMENT_CHUNK_ROWS) {
+            AssetEventsRepository::insert_many_tx(&mut db_tx, chunk).await?;
+        }
+
+        let address_assets: Vec<AddressAssetDelta> = rows
+            .address_assets
+            .into_iter()
+            .map(|((address, asset_name), balance)| AddressAssetDelta {
+                address,
+                asset_name,
+                balance,
+            })
+            .collect();
+        for chunk in address_assets.chunks(STATEMENT_CHUNK_ROWS) {
+            AddressAssetsRepository::apply_deltas_tx(&mut db_tx, chunk).await?;
+        }
+
+        let tx_addresses: Vec<TxAddressRow> = rows.tx_addresses.into_values().collect();
+        for chunk in tx_addresses.chunks(STATEMENT_CHUNK_ROWS) {
+            TxAddressesRepository::insert_many_tx(&mut db_tx, chunk).await?;
+        }
+
+        let tx_address_assets: Vec<TxAddressAssetRow> =
+            rows.tx_address_assets.into_values().collect();
+        for chunk in tx_address_assets.chunks(STATEMENT_CHUNK_ROWS) {
+            TxAddressAssetsRepository::insert_many_tx(&mut db_tx, chunk).await?;
+        }
+
+        SyncStateRepository::set_last_height_tx(&mut db_tx, last_height).await?;
 
         db_tx.commit().await?;
-
-        if height % 100 == 0 {
-            info!(height, "Block synced");
-        }
 
         Ok(())
     }
 
-    async fn process_inputs(
-        &self,
-        db_tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    fn build_rows(batch: &PreparedBatch) -> Result<BatchRows> {
+        let mut rows = BatchRows::default();
+
+        for block in &batch.blocks {
+            rows.blocks.push(BlockRow::from_block(block)?);
+
+            for (tx_index, transaction) in block.tx.iter().enumerate() {
+                let mut enriched =
+                    Self::process_inputs(&mut rows, transaction, block, &batch.prev_outs)?;
+
+                // The serialized bytes go to their own column, not the JSON.
+                let raw_hex = enriched.hex.take().and_then(|h| decode_hex(&h));
+
+                rows.transaction(TransactionRow {
+                    txid: transaction.txid.clone(),
+                    block_height: block.height as i32,
+                    tx_index: tx_index as i32,
+                    time: block.time as i32,
+                    total_output: transaction.total_output().to_decimal(),
+                    raw_data: serde_json::to_value(&enriched)?,
+                    raw_hex,
+                });
+
+                Self::process_outputs(&mut rows, transaction, tx_index, block);
+            }
+        }
+
+        rows.count_transactions_per_address();
+
+        Ok(rows)
+    }
+
+    /// Debit the owners of the spent outputs and return the transaction with
+    /// its inputs enriched with address and value.
+    fn process_inputs(
+        rows: &mut BatchRows,
         transaction: &Transaction,
         block: &Block,
-        tx_cache: &mut TransactionCache,
+        prev_outs: &HashMap<String, PrevOuts>,
     ) -> Result<Transaction> {
         let mut enriched = transaction.clone();
 
@@ -100,157 +382,91 @@ impl<'a> BlockProcessor<'a> {
                 None => continue,
             };
 
-            // Get previous transaction from cache
-            let prev_tx = match tx_cache.get(txid) {
-                Some(tx) => tx,
-                None => {
-                    warn!(txid = txid, "Missing prevTx in cache");
-                    continue;
-                }
-            };
+            let outs = prev_outs.get(txid).ok_or_else(|| {
+                SyncerError::Sync(format!(
+                    "Previous transaction {} not resolved for input {}:{}",
+                    txid, transaction.txid, i
+                ))
+            })?;
 
-            let prev_out = match prev_tx.vout.get(vout_idx) {
+            let prev_out = match outs.get(vout_idx) {
                 Some(out) => out,
                 None => continue,
             };
 
-            let addresses = &prev_out.script_pub_key.addresses;
-            let addr = match addresses {
-                Some(addrs) if !addrs.is_empty() => &addrs[0],
-                _ => continue,
+            let addr = match &prev_out.address {
+                Some(a) => a,
+                None => continue,
             };
 
             let val = prev_out.value;
+            let sats = val.sats() as i128;
 
-            // Enrich vin data
             enriched.vin[i].addresses = Some(vec![addr.clone()]);
             enriched.vin[i].value = Some(val);
 
-            // Standard XNA Debit
-            if val > 0.0 {
-                AddressesRepository::upsert_debit_tx(db_tx, addr, val).await?;
+            // Standard XNA debit
+            if val.is_positive() {
+                rows.address(addr).debit(sats);
+                rows.tx_address(&transaction.txid, addr, block).sent += sats;
             }
 
-            // Asset Debit (must be independent of val — asset outputs can have val=0)
-            if let Some(ref asset) = prev_out.script_pub_key.asset {
-                AddressAssetsRepository::upsert_debit_tx(db_tx, addr, &asset.name, asset.amount)
-                    .await?;
+            // Asset debit (independent of val: asset outputs carry 0 XNA)
+            if let Some((ref name, amount)) = prev_out.asset {
+                let asset_sats = amount.sats() as i128;
+                rows.address_asset(addr, name, -asset_sats);
+                rows.tx_address_asset(&transaction.txid, addr, name, -asset_sats, block);
             }
 
-            // Index for History
-            if val > 0.0 || prev_out.script_pub_key.asset.is_some() {
-                self.insert_tx_address(db_tx, &transaction.txid, addr, block).await?;
+            // Index for history
+            if val.is_positive() || prev_out.asset.is_some() {
+                rows.tx_address(&transaction.txid, addr, block);
             }
         }
 
         Ok(enriched)
     }
 
-    async fn process_outputs(
-        &self,
-        db_tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    /// Credit the receivers of the outputs and register issued assets.
+    fn process_outputs(
+        rows: &mut BatchRows,
         transaction: &Transaction,
+        tx_index: usize,
         block: &Block,
-    ) -> Result<()> {
+    ) {
         for vout in &transaction.vout {
-            let addresses = &vout.script_pub_key.addresses;
-            let addr = match addresses {
-                Some(addrs) if !addrs.is_empty() => &addrs[0],
-                _ => continue,
+            let addr = match vout.script_pub_key.first_address() {
+                Some(a) => a,
+                None => continue,
             };
 
             let val = vout.value;
+            let sats = val.sats() as i128;
 
-            if val >= 0.0 {
-                // Standard XNA Credit
-                AddressesRepository::upsert_credit_tx(db_tx, addr, val).await?;
+            if !val.is_negative() {
+                // Standard XNA credit
+                rows.address(addr).credit(sats);
+                rows.tx_address(&transaction.txid, addr, block).received += sats;
 
-                // Asset Processing
                 if let Some(ref asset) = vout.script_pub_key.asset {
                     let script_type = &vout.script_pub_key.script_type;
+                    let asset_sats = asset.amount.sats() as i128;
 
-                    // Register New/Updated Asset Metadata
+                    // Register new/updated asset metadata
                     if script_type == "new_asset" || script_type == "reissue_asset" {
-                        AssetsRepository::upsert_tx(
-                            db_tx,
-                            asset,
-                            script_type,
-                            block.height,
+                        rows.asset_event(
+                            AssetUpsert::from_event(asset, script_type, block.height, &transaction.txid),
                             &transaction.txid,
-                        )
-                        .await?;
+                            vout.n,
+                            tx_index,
+                        );
                     }
 
-                    // Credit User Balance
-                    AddressAssetsRepository::upsert_credit_tx(db_tx, addr, &asset.name, asset.amount)
-                        .await?;
-                }
-
-                // Index for History
-                self.insert_tx_address(db_tx, &transaction.txid, addr, block).await?;
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn insert_tx_address(
-        &self,
-        db_tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-        txid: &str,
-        address: &str,
-        block: &Block,
-    ) -> Result<()> {
-        TxAddressesRepository::insert_tx(db_tx, txid, address, block.height, block.time).await
-    }
-
-    pub async fn prefetch_inputs(
-        &self,
-        blocks: &[Block],
-        tx_cache: &mut TransactionCache,
-    ) -> Result<()> {
-        debug!(block_count = blocks.len(), "Pre-fetching inputs");
-
-        // Collect unique txids to fetch
-        let mut txids_to_fetch = std::collections::HashSet::new();
-
-        for block in blocks {
-            for tx in &block.tx {
-                for vin in &tx.vin {
-                    if !vin.is_coinbase() {
-                        if let Some(ref txid) = vin.txid {
-                            txids_to_fetch.insert(txid.clone());
-                        }
-                    }
+                    // Credit user balance
+                    rows.address_asset(addr, &asset.name, asset_sats);
+                    rows.tx_address_asset(&transaction.txid, addr, &asset.name, asset_sats, block);
                 }
             }
         }
-
-        let txid_vec: Vec<String> = txids_to_fetch.into_iter().collect();
-        debug!(count = txid_vec.len(), "Unique inputs to fetch");
-
-        // Fetch transactions with bounded concurrency
-        let results: Vec<Option<Transaction>> = stream::iter(txid_vec)
-            .map(|txid| async move {
-                match self.rpc.get_raw_transaction(&txid).await {
-                    Ok(tx) => Some(tx),
-                    Err(e) => {
-                        warn!(txid = txid, error = %e, "Failed to fetch transaction");
-                        None
-                    }
-                }
-            })
-            .buffer_unordered(INPUT_FETCH_CONCURRENCY)
-            .collect()
-            .await;
-
-        // Insert into cache
-        for tx in results.into_iter().flatten() {
-            tx_cache.insert(tx.txid.clone(), tx);
-        }
-
-        debug!(cache_size = tx_cache.len(), "Inputs pre-fetched");
-
-        Ok(())
     }
 }

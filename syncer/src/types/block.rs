@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use super::Transaction;
+
+use super::{Extra, Transaction};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
@@ -25,4 +26,7 @@ pub struct Block {
     pub size: i32,
     pub strippedsize: i32,
     pub weight: i32,
+    /// Node fields not modelled here (kept for `raw_data`).
+    #[serde(flatten)]
+    pub extra: Extra,
 }

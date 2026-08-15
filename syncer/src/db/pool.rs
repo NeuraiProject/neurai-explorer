@@ -22,5 +22,8 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<PgPool> {
         .map_err(|e| crate::error::SyncerError::Database(e.into()))?;
 
     tracing::info!("Database migrations applied successfully");
+
+    super::schema::ensure_schema_version(&pool).await?;
+
     Ok(pool)
 }

@@ -1,6 +1,6 @@
 # Build artifacts
 /target/
-
+docs
 # Cargo lock for libraries (keep for binaries)
 # Cargo.lock
 

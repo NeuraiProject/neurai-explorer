@@ -23,16 +23,29 @@ impl SyncStateRepository {
         Ok(())
     }
 
-    pub async fn get_last_height(pool: &PgPool) -> Result<Option<i64>> {
+    async fn get_last_height_internal<'e, E>(executor: E) -> Result<Option<i64>>
+    where
+        E: Executor<'e, Database = Postgres>,
+    {
         let result: Option<(Option<String>,)> = sqlx::query_as(
             "SELECT value FROM sync_state WHERE key = 'last_height'"
         )
-        .fetch_optional(pool)
+        .fetch_optional(executor)
         .await?;
 
         Ok(result
             .and_then(|(v,)| v)
             .and_then(|v| v.parse().ok()))
+    }
+
+    pub async fn get_last_height(pool: &PgPool) -> Result<Option<i64>> {
+        Self::get_last_height_internal(pool).await
+    }
+
+    pub async fn get_last_height_tx(
+        tx: &mut SqlxTransaction<'_, Postgres>,
+    ) -> Result<Option<i64>> {
+        Self::get_last_height_internal(&mut **tx).await
     }
 
     pub async fn set_last_height_tx(

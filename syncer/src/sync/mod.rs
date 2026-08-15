@@ -4,12 +4,16 @@ mod cache;
 mod stats;
 mod mempool;
 mod daily_stats;
+mod rollback;
+#[cfg(test)]
+mod writer_tests;
 
 pub use engine::SyncEngine;
 pub use stats::StatsSync;
 pub use stats::PriceSync;
 pub use mempool::MempoolSync;
 pub use daily_stats::DailyStatsSync;
+pub use rollback::rollback_from_height;
 
 use std::future::Future;
 use tokio::sync::watch;
