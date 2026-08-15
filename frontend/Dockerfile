@@ -2,11 +2,11 @@
 FROM node:25-alpine AS builder
 WORKDIR /app
 
-# Install dependencies
-COPY package.json package-lock.json* ./
+# Install dependencies exactly as locked (reproducible builds)
+COPY package.json package-lock.json ./
 # Generate Prisma Client (requires schema)
 COPY prisma ./prisma
-RUN npm install
+RUN npm ci
 RUN npx prisma generate
 
 # Build application

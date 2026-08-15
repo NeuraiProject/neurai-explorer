@@ -23,7 +23,7 @@ impl RpcRequest {
 pub struct RpcResponse<T> {
     pub result: Option<T>,
     pub error: Option<RpcError>,
-    pub id: String,
+    // `id` is echoed by the node but not needed: requests are not multiplexed.
 }
 
 #[derive(Debug, Deserialize)]

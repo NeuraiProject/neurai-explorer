@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     if let Command::Rollback(height) = command {
         info!(height, "Rolling back blocks >= height (operator request)");
         let report = rollback_from_height(&pool, height).await?;
-        info!(?report, "Done; start the syncer normally to resync from there");
+        info!(%report, "Done; start the syncer normally to resync from there");
         pool.close().await;
         return Ok(());
     }

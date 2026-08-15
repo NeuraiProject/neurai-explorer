@@ -55,7 +55,4 @@ impl SyncStateRepository {
         Self::set_last_height_internal(&mut **tx, height).await
     }
 
-    pub async fn set_last_height(pool: &PgPool, height: i64) -> Result<()> {
-        Self::set_last_height_internal(pool, height).await
-    }
 }

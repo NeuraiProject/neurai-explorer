@@ -3,7 +3,7 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org/)
-[![Rust](https://img.shields.io/badge/Rust-2024-DEA584?style=flat-square&logo=rust)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/Rust-2021-DEA584?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-18-4169E1?style=flat-square&logo=postgresql)](https://www.postgresql.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?style=flat-square&logo=tailwindcss)](https://tailwindcss.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker)](https://www.docker.com/)
@@ -62,7 +62,7 @@ The explorer follows a microservices architecture with four main components comm
 
 | Component | Technology | Version |
 |-----------|------------|---------|
-| Syncer Runtime | Rust | 2024 Edition |
+| Syncer Runtime | Rust | 2021 Edition (rust 1.92) |
 | Async Runtime | Tokio | Latest |
 | Database Driver | SQLx | Latest |
 | Database | PostgreSQL | 18.1 |
@@ -395,15 +395,20 @@ docker compose exec neurai-postgres psql -U neuraiuser -d neurai
 ```
 neurai-explorer/
 ├── frontend/                 # Next.js application
-│   ├── app/                  # App Router pages
-│   ├── components/           # React components
-│   ├── lib/                  # Utilities & helpers
-│   └── prisma/               # Database schema
+│   ├── src/app/              # App Router pages and /api routes
+│   ├── src/components/       # React components
+│   ├── src/lib/              # API client, exact-amount helpers (utils.ts)
+│   ├── src/lib/services/     # DB queries shared by pages and API routes
+│   ├── src/types/            # Shared TypeScript types (amounts are strings)
+│   └── prisma/               # Prisma schema (mirrors the syncer's migrations)
 ├── syncer/                   # Rust syncer service
+│   ├── migrations/           # SQL migrations (applied at startup)
 │   ├── src/
-│   │   ├── main.rs           # Entry point
-│   │   ├── rpc/              # RPC client
-│   │   └── db/               # Database operations
+│   │   ├── main.rs           # Entry point, --rollback command
+│   │   ├── rpc/              # RPC/REST client, NodeClient trait
+│   │   ├── sync/             # Engine (batches, reorgs), writer, rollback, stats
+│   │   ├── db/               # Pool, schema guard, repositories
+│   │   └── types/            # Node JSON types, Amount
 │   └── Cargo.toml
 ├── docker-compose.yml        # Service orchestration (node pulled from Docker Hub)
 ├── .env.example              # Configurable variables with defaults

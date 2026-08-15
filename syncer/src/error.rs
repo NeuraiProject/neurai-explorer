@@ -46,12 +46,6 @@ pub enum SyncerError {
     #[error("Sync error: {0}")]
     Sync(String),
 
-    #[error("Block not found: height {0}")]
-    BlockNotFound(i64),
-
-    #[error("Transaction not found: {0}")]
-    TransactionNotFound(String),
-
     #[error("Reorg detected at height {0}")]
     ReorgDetected(i64),
 }

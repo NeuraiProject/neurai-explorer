@@ -72,7 +72,7 @@ pub async fn rollback_from_height(pool: &DbPool, height: i64) -> Result<Rollback
         assets_rebuilt: rebuilt.len() as u64,
         assets_deleted,
     };
-    info!(?report, "Rollback complete");
+    info!(%report, "Rollback complete");
     Ok(report)
 }
 
@@ -88,6 +88,24 @@ impl RollbackReport {
             assets_rebuilt: 0,
             assets_deleted: 0,
         }
+    }
+}
+
+impl std::fmt::Display for RollbackReport {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "height >= {}: {} blocks deleted, {} addresses reverted ({} removed), \
+             {} asset balances reverted ({} pairs removed), {} assets rebuilt, {} deleted",
+            self.height,
+            self.blocks_deleted,
+            self.addresses_reverted,
+            self.addresses_removed,
+            self.asset_balances_reverted,
+            self.asset_pairs_removed,
+            self.assets_rebuilt,
+            self.assets_deleted
+        )
     }
 }
 

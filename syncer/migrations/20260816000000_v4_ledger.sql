@@ -18,6 +18,9 @@ DROP INDEX IF EXISTS idx_tx_height;
 -- Latest transactions listings: ORDER BY time DESC, txid (stable pagination)
 CREATE INDEX IF NOT EXISTS idx_tx_time ON transactions (time DESC, txid);
 
+-- mempool: like confirmed transactions, raw bytes outside the JSON.
+ALTER TABLE mempool ADD COLUMN IF NOT EXISTS raw_hex BYTEA;
+
 -- tx_addresses: XNA received / spent by the address in that transaction.
 -- addresses.balance == SUM(received - sent), addresses.tx_count == COUNT(*)
 ALTER TABLE tx_addresses

@@ -42,6 +42,7 @@ impl Amount {
     }
 
     /// Exact decimal with 8 fractional digits.
+    #[cfg(test)]
     pub fn to_decimal(self) -> BigDecimal {
         BigDecimal::new(self.0.into(), AMOUNT_DECIMALS as i64)
     }

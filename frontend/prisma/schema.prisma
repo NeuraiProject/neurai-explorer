@@ -125,7 +125,10 @@ model NetworkStats {
 model Mempool {
   txid    String @id
   time    Int?
+  /// Decoded transaction JSON (without `hex`, see rawHex)
   rawData Json?  @map("raw_data")
+  /// Serialized transaction bytes
+  rawHex  Bytes? @map("raw_hex")
 
   @@index([time(sort: Desc)], name: "idx_mempool_time")
   @@map("mempool")

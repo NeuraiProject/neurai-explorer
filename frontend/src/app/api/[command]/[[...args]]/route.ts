@@ -67,14 +67,14 @@ export async function GET(
                 let rawData: unknown = mined?.rawData ?? null;
                 let hex: string | undefined = mined?.rawHex ? Buffer.from(mined.rawHex).toString('hex') : undefined;
 
-                // 2. Check Mempool (its JSON still carries `hex`)
+                // 2. Check Mempool (same layout: JSON + raw_hex)
                 if (!mined) {
                     const mempoolTx = await prisma.mempool.findUnique({
                         where: { txid },
-                        select: { rawData: true }
+                        select: { rawData: true, rawHex: decrypt === 0 }
                     });
                     rawData = mempoolTx?.rawData ?? null;
-                    hex = (mempoolTx?.rawData as { hex?: string } | null)?.hex;
+                    hex = mempoolTx?.rawHex ? Buffer.from(mempoolTx.rawHex).toString('hex') : undefined;
                 }
 
                 if (!rawData) return NextResponse.json({ error: 'Transaction not found' }, { status: 404 });
