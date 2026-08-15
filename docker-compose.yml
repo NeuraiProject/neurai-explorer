@@ -65,9 +65,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-neuraidb}
     # The stock image is tuned for tiny machines (128MB shared_buffers, 1GB
     # max_wal_size). During the initial sync the syncer bulk-loads millions of
-    # rows; a larger buffer pool and less frequent checkpoints keep the write
-    # path from stalling. Adjust PG_SHARED_BUFFERS to ~25% of the RAM you can
-    # give to PostgreSQL.
+    # rows into tables with several random-key indexes; what limits it is
+    # write I/O, mostly full-page images written to the WAL after every
+    # checkpoint. A larger buffer pool and far less frequent checkpoints
+    # (bigger max_wal_size / checkpoint_timeout) cut that several-fold. Set
+    # PG_SHARED_BUFFERS to ~25% of the RAM you can give PostgreSQL and
+    # PG_MAX_WAL_SIZE to what the disk can spare (it is reclaimed later).
     command:
       - postgres
       - -c
@@ -77,18 +80,24 @@ services:
       - -c
       - maintenance_work_mem=256MB
       - -c
-      - max_wal_size=4GB
+      - max_wal_size=${PG_MAX_WAL_SIZE:-8GB}
+      - -c
+      - checkpoint_timeout=${PG_CHECKPOINT_TIMEOUT:-15min}
       - -c
       - checkpoint_completion_target=0.9
       - -c
-      - wal_compression=on
+      - wal_compression=lz4
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 5
     volumes:
-      - pg-data:/var/lib/postgresql/data
+      # postgres:18 images keep the cluster in /var/lib/postgresql/18/docker
+      # (PGDATA) and declare /var/lib/postgresql as the volume; mounting the
+      # pre-18 path /var/lib/postgresql/data would leave the data in an
+      # anonymous volume that is lost on `docker compose down`.
+      - pg-data:/var/lib/postgresql
     networks:
       - neurai-explorer-net
     logging: *default-logging
