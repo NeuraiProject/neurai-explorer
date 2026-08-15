@@ -15,6 +15,8 @@ ALTER TABLE transactions
     ADD COLUMN IF NOT EXISTS fee NUMERIC;
 CREATE INDEX IF NOT EXISTS idx_tx_height_index ON transactions (block_height, tx_index);
 DROP INDEX IF EXISTS idx_tx_height;
+-- Latest transactions listings: ORDER BY time DESC, txid (stable pagination)
+CREATE INDEX IF NOT EXISTS idx_tx_time ON transactions (time DESC, txid);
 
 -- tx_addresses: XNA received / spent by the address in that transaction.
 -- addresses.balance == SUM(received - sent), addresses.tx_count == COUNT(*)
@@ -22,6 +24,10 @@ ALTER TABLE tx_addresses
     ADD COLUMN IF NOT EXISTS received NUMERIC NOT NULL DEFAULT 0,
     ADD COLUMN IF NOT EXISTS sent NUMERIC NOT NULL DEFAULT 0;
 CREATE INDEX IF NOT EXISTS idx_txaddr_height ON tx_addresses (block_height);
+-- Address history pages: WHERE address = ? ORDER BY time DESC, txid LIMIT n.
+-- Covers the plain address lookup too, so the old single-column index goes.
+CREATE INDEX IF NOT EXISTS idx_txaddr_address_time ON tx_addresses (address, time DESC, txid);
+DROP INDEX IF EXISTS idx_txaddr_address;
 
 -- Asset units moved per (transaction, address, asset).
 -- address_assets.balance == SUM(delta)
@@ -33,8 +39,10 @@ CREATE TABLE IF NOT EXISTS tx_address_assets (
     block_height INTEGER,
     PRIMARY KEY (txid, address, asset_name)
 );
-CREATE INDEX IF NOT EXISTS idx_txaa_address ON tx_address_assets (address);
-CREATE INDEX IF NOT EXISTS idx_txaa_asset ON tx_address_assets (asset_name);
+-- One index per real query: an address's asset history, and an asset's
+-- recent movements; both newest first with a stable tie-break.
+CREATE INDEX IF NOT EXISTS idx_txaa_address_height ON tx_address_assets (address, block_height DESC, txid);
+CREATE INDEX IF NOT EXISTS idx_txaa_asset_height ON tx_address_assets (asset_name, block_height DESC, txid);
 CREATE INDEX IF NOT EXISTS idx_txaa_height ON tx_address_assets (block_height);
 
 -- Asset issuance / reissuance events, in chain order. The `assets` row is a

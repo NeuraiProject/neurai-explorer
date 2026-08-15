@@ -35,47 +35,59 @@ impl DailyStatsRepository {
         Ok(result.rows_affected())
     }
 
+    /// Recompute the daily rows from `date` (UTC) onwards.
+    ///
+    /// Filters on the integer `time` columns (`blocks.time`,
+    /// `transactions.time`, `tx_addresses.time` all hold the block time), so
+    /// the indexes on them are used instead of scanning every row through
+    /// `to_timestamp(...)::date`. Days are computed in UTC explicitly, not in
+    /// the session time zone.
     pub async fn aggregate_from_date(pool: &PgPool, date: NaiveDate) -> Result<()> {
         debug!(%date, "Aggregating daily stats");
+
+        let since = date
+            .and_hms_opt(0, 0, 0)
+            .expect("midnight exists")
+            .and_utc()
+            .timestamp() as i32;
 
         sqlx::query(
             r#"
             WITH block_stats AS (
                 SELECT
-                    to_timestamp(b.time)::date as day,
-                    COUNT(*) as blk_cnt,
-                    SUM(difficulty) as sum_diff,
-                    SUM(tx_count) as tx_cnt,
-                    SUM((raw_data->>'size')::bigint) as sum_size,
-                    SUM(50000 * POWER(0.95, FLOOR(b.height::numeric / 14400))) as new_sup
+                    (to_timestamp(b.time) AT TIME ZONE 'UTC')::date AS day,
+                    COUNT(*) AS blk_cnt,
+                    SUM(difficulty) AS sum_diff,
+                    SUM(tx_count) AS tx_cnt,
+                    SUM((raw_data->>'size')::bigint) AS sum_size,
+                    SUM(50000 * POWER(0.95, FLOOR(b.height::numeric / 14400))) AS new_sup
                 FROM blocks b
-                WHERE to_timestamp(b.time)::date >= $1::date
+                WHERE b.time >= $1
                 GROUP BY 1
             ),
             vol_stats AS (
                 SELECT
-                    to_timestamp(b.time)::date as day,
-                    SUM(t.total_output) as vol
+                    (to_timestamp(t.time) AT TIME ZONE 'UTC')::date AS day,
+                    SUM(t.total_output) AS vol
                 FROM transactions t
-                JOIN blocks b ON t.block_height = b.height
-                WHERE to_timestamp(b.time)::date >= $1::date
+                WHERE t.time >= $1
                 GROUP BY 1
             ),
             asset_stats AS (
                 SELECT
-                    to_timestamp(b.time)::date as day,
-                    COUNT(*) as new_assets
+                    (to_timestamp(b.time) AT TIME ZONE 'UTC')::date AS day,
+                    COUNT(*) AS new_assets
                 FROM assets a
                 JOIN blocks b ON a.block_height = b.height
-                WHERE to_timestamp(b.time)::date >= $1::date
+                WHERE b.time >= $1
                 GROUP BY 1
             ),
             addr_stats AS (
                 SELECT
-                    to_timestamp(time)::date as day,
-                    COUNT(DISTINCT address) as active_addrs
+                    (to_timestamp(time) AT TIME ZONE 'UTC')::date AS day,
+                    COUNT(DISTINCT address) AS active_addrs
                 FROM tx_addresses
-                WHERE to_timestamp(time)::date >= $1::date
+                WHERE time >= $1
                 GROUP BY 1
             )
             INSERT INTO daily_stats (
@@ -117,7 +129,7 @@ impl DailyStatsRepository {
                 burned_coins = EXCLUDED.burned_coins
             "#,
         )
-        .bind(date)
+        .bind(since)
         .execute(pool)
         .await?;
 

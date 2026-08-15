@@ -198,7 +198,8 @@ async fn snapshot(pool: &PgPool) -> Vec<(String, String)> {
 }
 
 /// The columns that existed before schema v4 (`with_tx_count` = false leaves
-/// out `addresses.tx_count`, whose meaning changed in v4).
+/// out `addresses.tx_count`, whose meaning changed in v4, and strips the
+/// v4-only `vin[].asset` enrichment from the tx JSON).
 async fn snapshot_legacy(pool: &PgPool, with_tx_count: bool) -> Vec<(String, String)> {
     let mut rows: Vec<(String, String)> = Vec::new();
     let addrs: Vec<(String, BigDecimal, BigDecimal, BigDecimal, i32)> = sqlx::query_as(
@@ -229,7 +230,16 @@ async fn snapshot_legacy(pool: &PgPool, with_tx_count: bool) -> Vec<(String, Str
     let txs: Vec<(String, i32, i32, BigDecimal, serde_json::Value)> = sqlx::query_as(
         "SELECT txid, block_height, time, total_output, raw_data FROM transactions ORDER BY txid",
     ).fetch_all(pool).await.unwrap();
-    for (t, h, ti, tot, raw) in txs {
+    for (t, h, ti, tot, mut raw) in txs {
+        if !with_tx_count {
+            if let Some(vins) = raw["vin"].as_array_mut() {
+                for v in vins {
+                    if let Some(o) = v.as_object_mut() {
+                        o.remove("asset");
+                    }
+                }
+            }
+        }
         rows.push((format!("tx:{}", t), format!("{} {} {} vin={}", h, ti, n(&tot), raw["vin"])));
     }
     let blocks: Vec<(i32, String, i32, BigDecimal, i32)> = sqlx::query_as(
@@ -316,6 +326,11 @@ async fn writer_produces_expected_ledger() {
     assert!(t1.starts_with("1 1700000060 49999.9 "), "{}", t1);
     // Amounts are strings in the stored JSON (exact for JavaScript consumers)
     assert!(t1.contains(r#""addresses":["A"]"#) && t1.contains(r#""value":"50000.00000000""#), "{}", t1);
+    // Inputs that spend an asset output carry the asset (name + amount only)
+    let t3 = get(&snap, "tx:t3");
+    assert!(t3.contains(r#""asset":{"amount":"1000.00000000","name":"TOKEN"}"#), "{}", t3);
+    assert!(t3.contains(r#""asset":{"amount":"1.00000000","name":"TOKEN!"}"#), "{}", t3);
+    assert!(!t1.contains(r#""asset""#), "plain XNA inputs have no asset: {}", t1);
 
     assert_eq!(get(&snap, "block:3"), format!("{:064x} 1700000180 0.1 2", 4));
     assert_eq!(get(&snap, "sync_state"), "3");
@@ -878,4 +893,38 @@ async fn schema_guard_requires_explicit_resync() {
     let (v,): (Option<String>,) = sqlx::query_as("SELECT value FROM sync_state WHERE key = 'schema_version'")
         .fetch_one(&pool).await.unwrap();
     assert_eq!(v.as_deref(), Some(SCHEMA_VERSION));
+}
+
+/// The daily aggregation runs on the v4 layout and buckets by UTC day.
+#[tokio::test]
+#[ignore]
+async fn daily_stats_aggregation_runs_and_buckets_by_utc_day() {
+    use crate::db::repositories::DailyStatsRepository;
+    use chrono::NaiveDate;
+
+    let Some(pool) = test_pool().await else { return };
+    sqlx::query("TRUNCATE daily_stats").execute(&pool).await.unwrap();
+    // fixture blocks are at 1700000000 + h*60 => all on 2023-11-14 UTC
+    BatchWriter::new(&pool, true).write(&prepare_offline(fixture_chain())).await.unwrap();
+
+    DailyStatsRepository::aggregate_from_date(&pool, NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()).await.unwrap();
+
+    let rows: Vec<(NaiveDate, i32, i32, BigDecimal, i32, i32)> = sqlx::query_as(
+        "SELECT date, block_count, tx_count, total_output, new_assets_count, active_address_count FROM daily_stats ORDER BY date",
+    ).fetch_all(&pool).await.unwrap();
+    assert_eq!(rows.len(), 1);
+    let (date, blocks, txs, vol, new_assets, active) = &rows[0];
+    assert_eq!(*date, NaiveDate::from_ymd_opt(2023, 11, 14).unwrap());
+    assert_eq!(*blocks, 4);
+    assert_eq!(*txs, 8);
+    assert_eq!(*new_assets, 2); // TOKEN and TOKEN!
+    assert_eq!(*active, 5);     // A B C D E
+    // Σ total_output of all txs: 4 coinbases (200000) + t1 49999.9 + t2 49999.4 + t3 49499.3 + t4 0
+    assert_eq!(n(vol), "349498.6");
+
+    // A later start date that excludes everything touches nothing
+    DailyStatsRepository::aggregate_from_date(&pool, NaiveDate::from_ymd_opt(2024, 1, 1).unwrap()).await.unwrap();
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM daily_stats").fetch_one(&pool).await.unwrap();
+    assert_eq!(count, 1);
+    assert_eq!(DailyStatsRepository::latest_date(&pool).await.unwrap(), Some(*date));
 }

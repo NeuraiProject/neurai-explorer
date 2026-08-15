@@ -13,7 +13,7 @@ use crate::db::repositories::{
 use crate::db::DbPool;
 use crate::error::{Result, SyncerError};
 use crate::rpc::RpcClient;
-use crate::types::{decode_hex, Block, Transaction};
+use crate::types::{decode_hex, Asset, Block, Transaction};
 
 use super::cache::{prev_outs_of, PrevOutCache, PrevOuts};
 
@@ -425,6 +425,9 @@ impl<'a> BatchWriter<'a> {
 
             enriched.vin[i].addresses = Some(vec![addr.clone()]);
             enriched.vin[i].value = Some(val);
+            if let Some((ref name, amount)) = prev_out.asset {
+                enriched.vin[i].asset = Some(Asset::transfer(name, amount));
+            }
 
             // Standard XNA debit
             if val.is_positive() {

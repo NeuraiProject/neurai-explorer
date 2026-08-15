@@ -182,7 +182,7 @@ export async function GET(
 
                 const txs = await prisma.transaction.findMany({
                     where: { totalOutput: { gte: min } },
-                    orderBy: { time: 'desc' },
+                    orderBy: [{ time: 'desc' }, { txid: 'asc' }],
                     take: length,
                     skip: start,
                     select: { rawData: true }

@@ -41,6 +41,7 @@ model Transaction {
   assetEvents      AssetEvent[]
 
   @@index([blockHeight, txIndex], name: "idx_tx_height_index")
+  @@index([time(sort: Desc), txid], name: "idx_tx_time")
   @@map("transactions")
 }
 
@@ -73,7 +74,7 @@ model TxAddress {
   addressRef  Address     @relation(fields: [address], references: [address], onDelete: Cascade)
 
   @@id([txid, address])
-  @@index([address], name: "idx_txaddr_address")
+  @@index([address, time(sort: Desc), txid], name: "idx_txaddr_address_time")
   @@index([time(sort: Desc)], name: "idx_txaddr_time")
   @@index([blockHeight], name: "idx_txaddr_height")
   @@map("tx_addresses")
@@ -92,8 +93,8 @@ model TxAddressAsset {
   asset       Asset       @relation(fields: [assetName], references: [name], onDelete: Cascade)
 
   @@id([txid, address, assetName])
-  @@index([address], name: "idx_txaa_address")
-  @@index([assetName], name: "idx_txaa_asset")
+  @@index([address, blockHeight(sort: Desc), txid], name: "idx_txaa_address_height")
+  @@index([assetName, blockHeight(sort: Desc), txid], name: "idx_txaa_asset_height")
   @@index([blockHeight], name: "idx_txaa_height")
   @@map("tx_address_assets")
 }

@@ -28,7 +28,8 @@ export async function GET(request: Request) {
             where: Number.isFinite(minTotalOutput)
                 ? { totalOutput: { gte: minTotalOutput } }
                 : undefined,
-            orderBy: { time: 'desc' },
+            // Matches idx_tx_time (time DESC, txid): stable pages for equal timestamps
+            orderBy: [{ time: 'desc' }, { txid: 'asc' }],
             take: limit,
             skip: skip,
             // rawHex is only needed by getrawtransaction; keep it out of listings

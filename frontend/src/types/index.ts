@@ -94,6 +94,8 @@ export interface TransactionInput {
     isAddress: boolean;
     /** Value of the spent output (enriched by the syncer) */
     value?: AmountString;
+    /** Asset carried by the spent output (enriched by the syncer) */
+    asset?: ScriptAsset;
     coinbase?: string;
 }
 

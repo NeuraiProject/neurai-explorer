@@ -30,6 +30,22 @@ pub struct Asset {
     pub extra: Extra,
 }
 
+impl Asset {
+    /// An asset reference with just name and amount, as used to describe
+    /// what a spent output carried (issuance metadata does not apply).
+    pub fn transfer(name: &str, amount: Amount) -> Self {
+        Self {
+            name: name.to_string(),
+            amount,
+            units: None,
+            reissuable: None,
+            has_ipfs: None,
+            ipfs_hash: None,
+            extra: Extra::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScriptPubKey {
     pub asm: String,
@@ -67,11 +83,14 @@ pub struct Vin {
     pub sequence: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coinbase: Option<String>,
-    // Enriched fields (added during processing)
+    // Enriched fields (added during processing): owner, value and asset of
+    // the spent output
     #[serde(skip_serializing_if = "Option::is_none")]
     pub addresses: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<Amount>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset: Option<Asset>,
     #[serde(flatten)]
     pub extra: Extra,
 }

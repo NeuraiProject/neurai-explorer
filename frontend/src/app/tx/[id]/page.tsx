@@ -7,6 +7,18 @@ import { TxIdDisplay } from '@/components/TxIdDisplay';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { formatAmount, getTotalOutput } from '@/lib/utils';
+import type { ScriptAsset } from '@/types';
+
+/** "1,000 TOKEN" line for an input/output that carries an asset. */
+function AssetLine({ asset, className }: { asset?: ScriptAsset; className?: string }) {
+    if (!asset) return null;
+    return (
+        <div className={`font-mono text-xs whitespace-nowrap ${className ?? ''}`}>
+            {formatAmount(asset.amount, { trim: true, grouping: true })}{' '}
+            <Link href={`/asset/${encodeURIComponent(asset.name)}`} className="hover:underline">{asset.name}</Link>
+        </div>
+    );
+}
 
 export default function TxPage() {
     const { id } = useParams();
@@ -81,8 +93,11 @@ export default function TxPage() {
                                         </Link>
                                     )}
                                 </div>
-                                <div className="font-mono text-sm whitespace-nowrap">
-                                    {vin.value ? formatAmount(vin.value) : ''} XNA
+                                <div className="flex flex-col items-end">
+                                    <div className="font-mono text-sm whitespace-nowrap">
+                                        {vin.value ? formatAmount(vin.value) : ''} XNA
+                                    </div>
+                                    <AssetLine asset={vin.asset} className="text-red-600 dark:text-red-400" />
                                 </div>
                             </li>
                         ))}
@@ -97,8 +112,11 @@ export default function TxPage() {
                                         {vout.scriptPubKey!.addresses![0]}
                                     </Link>
                                 </div>
-                                <div className="font-mono text-sm lg:text-base whitespace-nowrap font-bold text-green-600 dark:text-green-400">
-                                    {formatAmount(vout.value)} XNA
+                                <div className="flex flex-col items-end">
+                                    <div className="font-mono text-sm lg:text-base whitespace-nowrap font-bold text-green-600 dark:text-green-400">
+                                        {formatAmount(vout.value)} XNA
+                                    </div>
+                                    <AssetLine asset={vout.scriptPubKey?.asset} className="text-green-600 dark:text-green-400" />
                                 </div>
                             </li>
                         ))}
