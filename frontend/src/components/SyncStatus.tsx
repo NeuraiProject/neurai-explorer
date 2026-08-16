@@ -65,7 +65,7 @@ export function SyncStatus() {
         <button
             type="button"
             ref={containerRef}
-            className="relative flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-border hover:bg-muted/80 transition-colors"
+            className="pill relative hover:bg-border transition-colors"
             aria-expanded={showDetails}
             aria-controls="sync-status-details"
             onClick={() => setIsPinned((prev) => !prev)}
@@ -83,7 +83,7 @@ export function SyncStatus() {
             </div>
 
             <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">Syncr:</span>
+                <span className="text-sm font-medium text-muted-foreground hidden sm:inline-block">Height</span>
                 <span className={cn(
                     "text-sm font-mono font-bold",
                     isNodeSynced ? "text-green-600 dark:text-green-400" : "text-red-500"
@@ -94,7 +94,7 @@ export function SyncStatus() {
             {showDetails && (
                 <div
                     id="sync-status-details"
-                    className="absolute left-0 top-full mt-2 w-max min-w-full rounded-lg border border-border bg-background shadow-lg p-3 text-left text-xs text-muted-foreground"
+                    className="absolute right-0 top-full mt-2 w-max min-w-full rounded-inner border border-border bg-card shadow-card p-3 text-left text-xs text-muted-foreground"
                 >
                     <div className="font-medium text-foreground">{statusText}</div>
                     <div className="mt-2 grid gap-1">

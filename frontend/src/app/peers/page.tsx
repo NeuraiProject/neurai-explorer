@@ -24,9 +24,7 @@ export default function PeersPage() {
     return (
         <div className="flex flex-col gap-6">
             <div className="flex justify-between items-center">
-                <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">
-                    Node Peers
-                </h1>
+                <h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Node Peers</h1>
                 <span className="text-muted-foreground text-sm font-mono bg-muted/30 px-3 py-1 rounded">
                     Total: <span className="text-primary font-bold">{peers?.length || 0}</span>
                 </span>

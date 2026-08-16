@@ -18,15 +18,27 @@ const config: Config = {
                 // We can ensure our smallest "legal" size is 14px (0.875rem)
                 // but it's better to just use the standard classes in JSX.
             },
+            fontFamily: {
+                sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+                mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace'],
+            },
+            borderRadius: {
+                card: 'var(--radius-card)',
+                inner: 'var(--radius-inner)',
+            },
+            boxShadow: {
+                card: 'var(--shadow-card)',
+            },
             colors: {
-                border: "hsl(var(--border) / <alpha-value>)", // Assuming HSL which is standard for shadcn-like, but globals.css used hex. 
-                // Wait, globals.css used hex directly in --background: #ffffff; 
-                // If I used hex, I can just use var(--background). 
-                // But Tailwind with opacity modifiers needs raw values if using <alpha-value>.
-                // For now, let's just use `var(--variable)` which works but opacity modifiers won't work perfectly unless I change globals to use HSL/RGB channels.
-                // Given the build error is just "class does not exist", simply defining them will fix it.
+                // All colours come from the CSS variables in globals.css so
+                // that light/dark are one source of truth.
                 background: "var(--background)",
                 foreground: "var(--foreground)",
+                border: "var(--border)",
+                input: {
+                    DEFAULT: "var(--input)",
+                    border: "var(--input-border)",
+                },
                 card: {
                     DEFAULT: "var(--card)",
                     foreground: "var(--card-foreground)",
@@ -37,7 +49,10 @@ const config: Config = {
                 },
                 primary: {
                     DEFAULT: "var(--primary)",
+                    hover: "var(--primary-hover)",
                     foreground: "var(--primary-foreground)",
+                    soft: "var(--primary-soft)",
+                    "soft-border": "var(--primary-soft-border)",
                 },
                 secondary: {
                     DEFAULT: "var(--secondary)",
@@ -47,6 +62,7 @@ const config: Config = {
                     DEFAULT: "var(--muted)",
                     foreground: "var(--muted-foreground)",
                 },
+                subtle: "var(--subtle-foreground)",
                 accent: {
                     DEFAULT: "var(--accent)",
                     foreground: "var(--accent-foreground)",
@@ -59,11 +75,6 @@ const config: Config = {
                 success: "var(--success)",
                 warning: "var(--warning)",
                 ring: "var(--ring)",
-            },
-            backgroundImage: {
-                'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-                'gradient-conic':
-                    'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
             },
         },
     },

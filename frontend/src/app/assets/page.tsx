@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api, ApiAsset } from '@/lib/api';
-import { formatAmount, formatDate } from '@/lib/utils';
+import { formatDate } from '@/lib/utils';
+import { Amount } from '@/components/ui/Amount';
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { PaginationControls } from '@/components/ui/PaginationControls';
@@ -22,7 +23,7 @@ export default function AssetsPage() {
 
     return (
         <div className="container mx-auto px-4 py-8">
-            <h1 className="text-3xl font-bold mb-6">Assets</h1>
+            <div className="flex flex-col gap-1 mb-6"><span className="eyebrow">Tokens</span><h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Assets</h1></div>
             <Card>
                 <div className="flex flex-col">
                     {isLoading && <div className="p-8 text-center text-muted-foreground">Loading assets...</div>}
@@ -59,7 +60,7 @@ export default function AssetsPage() {
                                                             asset.name.startsWith('$') ? 'Restricted' : 'Main'}
                                                 </td>
                                                 <td className="px-6 py-4 text-right font-mono">
-                                                    {formatAmount(asset.amount, { decimals: asset.units, grouping: true })}
+                                                    <Amount value={asset.amount} decimals={asset.units} grouping />
                                                 </td>
                                                 <td className="px-6 py-4 text-center">
                                                     {asset.reissuable ? (

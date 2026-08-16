@@ -178,15 +178,15 @@ export function getAmountClass(amount: number | string | bigint): string {
     typeof amount === 'string' ? Number(amount) : amount;
 
   if (value >= thresholds.high) {
-    return "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200";
+    return "bg-primary text-primary-foreground";
   }
   if (value >= thresholds.medium) {
-    return "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-200";
+    return "bg-primary-soft text-accent-foreground border border-primary-soft-border";
   }
   if (value >= thresholds.low) {
-    return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200";
+    return "bg-muted text-foreground border border-border";
   }
-  return "bg-muted/40 text-foreground";
+  return "text-foreground";
 }
 
 /**

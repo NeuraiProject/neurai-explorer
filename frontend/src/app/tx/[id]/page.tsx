@@ -6,7 +6,8 @@ import { Card } from '@/components/ui/Card';
 import { TxIdDisplay } from '@/components/TxIdDisplay';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { formatAmount, getTotalOutput } from '@/lib/utils';
+import { getTotalOutput } from '@/lib/utils';
+import { Amount } from '@/components/ui/Amount';
 import type { ScriptAsset } from '@/types';
 
 /** "1,000 TOKEN" line for an input/output that carries an asset. */
@@ -14,7 +15,7 @@ function AssetLine({ asset, className }: { asset?: ScriptAsset; className?: stri
     if (!asset) return null;
     return (
         <div className={`font-mono text-xs whitespace-nowrap ${className ?? ''}`}>
-            {formatAmount(asset.amount, { trim: true, grouping: true })}{' '}
+            <Amount value={asset.amount} trim grouping />{' '}
             <Link href={`/asset/${encodeURIComponent(asset.name)}`} className="hover:underline">{asset.name}</Link>
         </div>
     );
@@ -40,8 +41,8 @@ export default function TxPage() {
     return (
         <div className="flex flex-col gap-6">
             <div>
-                <h1 className="text-3xl font-bold mb-2">Transaction Details</h1>
-                <div className="text-muted-foreground font-mono bg-muted/30 p-2 rounded inline-block text-sm lg:text-base max-w-full">
+                <div className="flex flex-col gap-1 mb-2"><span className="eyebrow">Transaction</span><h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Transaction Details</h1></div>
+                <div className="mono-box text-muted-foreground inline-block text-sm lg:text-base max-w-full">
                 <TxIdDisplay txid={tx.txid} className="text-sm lg:text-base" forceFull />
                 </div>
             </div>
@@ -58,13 +59,13 @@ export default function TxPage() {
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Output</span>
-                        <span className="font-mono font-bold text-green-600 dark:text-green-400">{formatAmount(totalOutput)} <span className="text-muted-foreground text-sm font-normal">XNA</span></span>
+                        <Amount value={totalOutput} unit="XNA" className="font-medium text-green-600 dark:text-green-400" unitClassName="text-muted-foreground" />
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Fee</span>
                         <span className="font-mono">
                             {tx.fee !== undefined && tx.fee !== null
-                                ? <>{formatAmount(tx.fee)} <span className="text-muted-foreground text-sm font-normal">XNA</span></>
+                                ? <Amount value={tx.fee} unit="XNA" unitClassName="text-muted-foreground" />
                                 : <span className="text-muted-foreground">—</span>}
                         </span>
                     </div>
@@ -94,8 +95,8 @@ export default function TxPage() {
                                     )}
                                 </div>
                                 <div className="flex flex-col items-end">
-                                    <div className="font-mono text-sm whitespace-nowrap">
-                                        {vin.value ? formatAmount(vin.value) : ''} XNA
+                                    <div className="text-sm">
+                                        {vin.value ? <Amount value={vin.value} unit="XNA" /> : <span className="text-muted-foreground">—</span>}
                                     </div>
                                     <AssetLine asset={vin.asset} className="text-red-600 dark:text-red-400" />
                                 </div>
@@ -113,8 +114,8 @@ export default function TxPage() {
                                     </Link>
                                 </div>
                                 <div className="flex flex-col items-end">
-                                    <div className="font-mono text-sm lg:text-base whitespace-nowrap font-bold text-green-600 dark:text-green-400">
-                                        {formatAmount(vout.value)} XNA
+                                    <div className="text-sm lg:text-base">
+                                        <Amount value={vout.value} unit="XNA" className="font-medium text-green-600 dark:text-green-400" />
                                     </div>
                                     <AssetLine asset={vout.scriptPubKey?.asset} className="text-green-600 dark:text-green-400" />
                                 </div>

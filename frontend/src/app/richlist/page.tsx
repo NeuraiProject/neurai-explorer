@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatAmount } from '@/lib/utils';
+import { Amount } from '@/components/ui/Amount';
 import { Card } from '@/components/ui/Card';
 import Link from 'next/link';
 
@@ -17,7 +17,7 @@ export default function RichListPage() {
 
     return (
         <div className="flex flex-col gap-6">
-            <h1 className="text-3xl font-bold">Top 100 Rich List</h1>
+            <div className="flex flex-col gap-1"><span className="eyebrow">Addresses</span><h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Top 100 Rich List</h1></div>
 
             <Card title="Wealth Distribution">
                 <div className="overflow-x-auto hidden lg:block">
@@ -39,7 +39,7 @@ export default function RichListPage() {
                                         </Link>
                                     </td>
                                     <td className="p-3 text-right font-mono font-semibold">
-                                        {formatAmount(item.balance, { decimals: 3, trim: true, grouping: true })} XNA
+                                        <Amount value={item.balance} decimals={3} trim grouping unit="XNA" />
                                     </td>
                                 </tr>
                             ))}
@@ -57,7 +57,7 @@ export default function RichListPage() {
                                     {item.address}
                                 </Link>
                                 <span className="font-mono font-semibold">
-                                    {formatAmount(item.balance, { decimals: 3, trim: true, grouping: true })} XNA
+                                    <Amount value={item.balance} decimals={3} trim grouping unit="XNA" />
                                 </span>
                             </div>
                         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useId } from 'react';
+import { useEffect, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { useChartColors } from '@/hooks/useChartColors';
 import { ChartSkeleton } from '@/components/ui/Skeleton';
@@ -16,7 +16,6 @@ export function DifficultyGraph() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const colors = useChartColors();
-    const gradientId = useId();
 
     useEffect(() => {
         const fetchData = async () => {
@@ -45,19 +44,13 @@ export function DifficultyGraph() {
     const padding = (maxDiff - minDiff) * 0.1;
 
     return (
-        <div className="w-full h-[250px] bg-card/50 border border-border/50 rounded-xl p-4 mb-6 shadow-sm">
-            <h3 className="text-sm font-medium text-muted-foreground mb-4 uppercase tracking-wider ml-2">
+        <div className="w-full h-[250px] bg-card border border-border rounded-card p-4 lg:p-5 shadow-card">
+            <h3 className="eyebrow mb-4">
                 Network Difficulty (Last 24h)
             </h3>
             <div className="w-full h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={data}>
-                        <defs>
-                            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={colors.info} stopOpacity={0.3} />
-                                <stop offset="95%" stopColor={colors.info} stopOpacity={0} />
-                            </linearGradient>
-                        </defs>
                         <XAxis dataKey="height" hide={true} />
                         <YAxis domain={[minDiff - padding, maxDiff + padding]} hide={true} />
                         <Tooltip
@@ -66,7 +59,7 @@ export function DifficultyGraph() {
                                     const d = payload[0].payload as DifficultyData;
                                     return (
                                         <div
-                                            className="p-3 rounded-lg shadow-lg text-sm"
+                                            className="p-3 rounded-inner shadow-card text-sm"
                                             style={{
                                                 backgroundColor: colors.background,
                                                 border: `1px solid ${colors.border}`,
@@ -91,8 +84,8 @@ export function DifficultyGraph() {
                             dataKey="difficulty"
                             stroke={colors.info}
                             strokeWidth={2}
-                            fillOpacity={1}
-                            fill={`url(#${gradientId})`}
+                            fillOpacity={0.15}
+                            fill={colors.info}
                             isAnimationActive={false}
                         />
                     </AreaChart>

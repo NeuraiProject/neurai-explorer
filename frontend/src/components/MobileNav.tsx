@@ -9,9 +9,9 @@ import { cn } from "@/lib/utils";
 import { isNavItemActive, NAV_ITEMS } from "@/lib/nav";
 
 const baseClassName =
-  "flex items-center justify-between rounded-lg px-3 py-2 text-base font-medium text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground";
+  "flex items-center justify-between rounded-inner px-3 py-2 text-base font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground";
 const activeClassName =
-  "text-foreground font-semibold bg-muted/50";
+  "text-primary font-semibold bg-primary-soft";
 
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -50,7 +50,7 @@ export default function MobileNav() {
         role="dialog"
         aria-modal="true"
         className={cn(
-          "absolute left-0 top-0 h-full w-72 bg-background border-r border-border shadow-lg transition-transform flex flex-col",
+          "absolute left-0 top-0 h-full w-72 bg-card border-r border-border shadow-card transition-transform flex flex-col",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >

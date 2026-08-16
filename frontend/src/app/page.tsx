@@ -10,7 +10,8 @@ import Link from 'next/link';
 import config from '../config.json';
 import { DifficultyGraph } from '@/components/DifficultyGraph';
 import { TxIdDisplay } from '@/components/TxIdDisplay';
-import { formatAmount, formatHashrate, formatCurrency, formatDate } from '@/lib/utils';
+import { formatHashrate, formatCurrency, formatDate } from '@/lib/utils';
+import { Amount } from '@/components/ui/Amount';
 
 function SystemStatus() {
   const { data: status, isLoading, error } = useQuery({ queryKey: ['status'], queryFn: api.getStatus });
@@ -25,23 +26,31 @@ function SystemStatus() {
   if (!status) return null;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-      <div className="bg-card border border-border p-6 rounded-xl shadow-sm">
-        <h3 className="text-muted-foreground text-sm font-medium mb-2 uppercase tracking-wider">Coin Supply</h3>
-        <div className="text-2xl font-bold text-card-foreground font-mono">{supply} <span className="text-primary text-base">{config.site.coinSymbol}</span></div>
-      </div>
-      <div className="bg-card border border-border p-6 rounded-xl shadow-sm">
-        <h3 className="text-muted-foreground text-sm font-medium mb-2 uppercase tracking-wider">Network</h3>
-        <div className="text-2xl font-bold text-card-foreground font-mono">{formatHashrate(status.backend.hashrate || 0)}</div>
-      </div>
-      <div className="bg-card border border-border p-6 rounded-xl shadow-sm">
-        <h3 className="text-muted-foreground text-sm font-medium mb-2 uppercase tracking-wider">Difficulty</h3>
-        <div className="text-2xl font-bold text-card-foreground font-mono">{parseFloat(status.backend.difficulty).toFixed(2)}</div>
-      </div>
-      <div className="bg-card border border-border p-6 rounded-xl shadow-sm">
-        <h3 className="text-muted-foreground text-sm font-medium mb-2 uppercase tracking-wider">Market Cap</h3>
-        <div className="text-2xl font-bold text-green-600 dark:text-green-400 font-mono">{marketCap}</div>
-      </div>
+    <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 lg:gap-4">
+      <StatTile label="Coin Supply" highlight className="col-span-2 xl:col-span-1">
+        <span className="font-mono font-medium">{supply}</span>{' '}
+        <span className="text-primary text-sm lg:text-base font-semibold">{config.site.coinSymbol}</span>
+      </StatTile>
+      <StatTile label="Network hashrate">
+        <span className="font-mono font-medium">{formatHashrate(status.backend.hashrate || 0)}</span>
+      </StatTile>
+      <StatTile label="Difficulty">
+        <span className="font-mono font-medium">{parseFloat(status.backend.difficulty).toFixed(2)}</span>
+      </StatTile>
+      <StatTile label="Market Cap" className="col-span-2 xl:col-span-1">
+        <span className="font-mono font-medium">{marketCap}</span>
+      </StatTile>
+    </div>
+  );
+}
+
+/** Small metric card: uppercase label over a large value. `highlight` uses
+ *  the soft orange background, like the balance card of the faucet. */
+function StatTile({ label, children, highlight, className }: { label: string; children: React.ReactNode; highlight?: boolean; className?: string }) {
+  return (
+    <div className={`rounded-card border p-4 lg:p-5 shadow-card min-w-0 ${highlight ? 'bg-primary-soft border-primary-soft-border' : 'bg-card border-border'} ${className ?? ''}`}>
+      <div className="eyebrow mb-2">{label}</div>
+      <div className="text-lg sm:text-xl lg:text-2xl font-semibold text-foreground truncate">{children}</div>
     </div>
   );
 }
@@ -62,9 +71,9 @@ function RecentBlocks() {
       <div className="flex flex-col flex-1">
         {isLoading && <div className="p-4 text-muted-foreground">Loading blocks...</div>}
         {blocks && blocks.map(block => (
-          <li key={block.hash} className="flex flex-row items-center justify-between py-3 border-b border-border last:border-0 hover:bg-muted/50 px-4 transition-colors gap-2">
+          <li key={block.hash} className="flex flex-row items-center justify-between py-3 border-b border-border last:border-0 hover:bg-muted px-4 lg:px-6 transition-colors gap-2">
             <div className="flex w-full items-center justify-between gap-2 lg:hidden">
-              <Link href={`/block/${block.height}`} className="font-bold text-primary text-base hover:underline truncate">
+              <Link href={`/block/${block.height}`} className="font-semibold text-primary text-base hover:underline truncate">
                 #{block.height}
               </Link>
               <div className="text-sm text-muted-foreground whitespace-nowrap text-center flex-1">
@@ -76,7 +85,7 @@ function RecentBlocks() {
             </div>
             <div className="hidden lg:grid grid-cols-[1fr_auto_1fr] items-center w-full gap-4">
               <div className="flex flex-col justify-center">
-                <Link href={`/block/${block.height}`} className="font-bold text-primary text-base lg:text-xl hover:underline truncate">
+                <Link href={`/block/${block.height}`} className="font-semibold text-primary text-base lg:text-xl hover:underline truncate">
                   #{block.height}
                 </Link>
                 <div className="text-sm lg:text-base text-muted-foreground whitespace-nowrap">
@@ -121,7 +130,7 @@ function RecentTransactions() {
       <div className="flex flex-col flex-1">
         {isLoading && <div className="p-4 text-muted-foreground">Loading transactions...</div>}
         {txs && txs.map(tx => (
-          <li key={tx.txid} className="flex flex-col lg:flex-row lg:items-center justify-between py-3 border-b border-border last:border-0 hover:bg-muted/50 px-4 transition-colors gap-2 lg:gap-4">
+          <li key={tx.txid} className="flex flex-col lg:flex-row lg:items-center justify-between py-3 border-b border-border last:border-0 hover:bg-muted px-4 lg:px-6 transition-colors gap-2 lg:gap-4">
             <div className="flex flex-col gap-2 w-full lg:hidden">
               <Link
                 href={`/tx/${tx.txid}`}
@@ -131,12 +140,10 @@ function RecentTransactions() {
                 <TxIdDisplay txid={tx.txid} className="text-sm" />
               </Link>
               <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-bold">
+                <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-semibold">
                   #{tx.height}
                 </Link>
-                <span className="font-bold text-green-600 dark:text-green-400 whitespace-nowrap">
-                  {formatAmount(tx.totalOutput, { decimals: 2 })} XNA
-                </span>
+                <Amount value={tx.totalOutput} decimals={2} unit="XNA" className="font-medium text-green-600 dark:text-green-400" />
               </div>
             </div>
             <div className="hidden lg:flex items-center overflow-hidden w-full lg:flex-1">
@@ -145,11 +152,9 @@ function RecentTransactions() {
               </Link>
             </div>
             <div className="hidden lg:flex flex-col items-start lg:items-end justify-center w-full lg:w-auto min-w-0 lg:min-w-[160px]">
-              <span className="font-bold text-green-600 dark:text-green-400 text-base lg:text-xl whitespace-nowrap">
-                {formatAmount(tx.totalOutput, { decimals: 2 })} XNA
-              </span>
+              <Amount value={tx.totalOutput} decimals={2} unit="XNA" className="font-medium text-green-600 dark:text-green-400 text-base lg:text-xl" />
               <div className="text-sm lg:text-base text-muted-foreground flex items-center gap-1">
-                <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-bold">#{tx.height}</Link>
+                <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-semibold">#{tx.height}</Link>
               </div>
             </div>
           </li>
@@ -169,17 +174,14 @@ function RecentTransactions() {
 
 export default function Home() {
   return (
-    <div className="flex flex-col gap-8 max-w-7xl mx-auto w-full">
-      <h1 className="text-4xl font-bold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-600">{config.site.title}</h1>
+    <div className="flex flex-col gap-6 lg:gap-8 max-w-7xl mx-auto w-full">
+      <SearchForm className="!max-w-full" size="lg" />
+
       <SystemStatus />
 
       <DifficultyGraph />
 
-      <div className="flex justify-center w-full mb-8">
-        <SearchForm className="w-full !max-w-full text-lg p-2" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
         <RecentBlocks />
         <RecentTransactions />
       </div>

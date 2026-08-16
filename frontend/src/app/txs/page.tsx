@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { queryKeys } from '@/lib/queryKeys';
-import { formatAmount, formatDate, getAmountClass, getTotalOutput } from '@/lib/utils';
+import { formatDate, getAmountClass, getTotalOutput } from '@/lib/utils';
+import { Amount } from '@/components/ui/Amount';
 import { Card } from '@/components/ui/Card';
 import { PageTitle } from '@/components/ui/PageTitle';
 import { PaginationControls } from '@/components/ui/PaginationControls';
@@ -48,8 +49,8 @@ export default function TransactionsPage() {
                                             >
                                                 <TxIdDisplay txid={tx.txid} className="text-sm" />
                                             </Link>
-                                            <div className={`rounded-md px-2 py-1 text-center text-sm font-bold ${getAmountClass(totalOutput)}`}>
-                                                {formatAmount(totalOutput, { decimals: 2 })} XNA
+                                            <div className={`rounded-lg px-2 py-1 text-center text-sm font-semibold ${getAmountClass(totalOutput)}`}>
+                                                <Amount value={totalOutput} decimals={2} unit="XNA" />
                                             </div>
                                             <div className="flex items-center justify-between text-sm text-muted-foreground">
                                                 <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-bold">
@@ -83,8 +84,8 @@ export default function TransactionsPage() {
                                             <Link href={`/tx/${tx.txid}`} className="block min-w-0 font-mono text-primary hover:underline">
                                                 <TxIdDisplay txid={tx.txid} className="text-base" />
                                             </Link>
-                                            <div className={`justify-self-end rounded-md px-2 py-1 text-right font-bold ${getAmountClass(totalOutput)}`}>
-                                                {formatAmount(totalOutput, { decimals: 2 })} XNA
+                                            <div className={`justify-self-end rounded-lg px-2 py-1 text-right font-semibold ${getAmountClass(totalOutput)}`}>
+                                                <Amount value={totalOutput} decimals={2} unit="XNA" />
                                             </div>
                                             <div className="justify-self-end whitespace-nowrap text-sm text-muted-foreground">{formatDate(tx.blocktime)}</div>
                                         </div>

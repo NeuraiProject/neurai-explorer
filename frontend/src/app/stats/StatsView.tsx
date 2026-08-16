@@ -48,7 +48,7 @@ export default function StatsView({ data }: StatsViewProps) {
 
     return (
         <div className="space-y-8">
-            <h1 className="text-3xl font-bold mb-6">Network Statistics</h1>
+            <div className="flex flex-col gap-1 mb-6"><span className="eyebrow">Network</span><h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Network Statistics</h1></div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* 1. Transaction Count */}
@@ -63,7 +63,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
                                 />
-                                <Bar dataKey="tx_count" name="Transactions" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="tx_count" name="Transactions" fill="#f97316" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
@@ -84,7 +84,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     itemStyle={{ color: 'var(--foreground)' }}
                                     formatter={(value) => typeof value === 'number' && value ? `${(value / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 2 })} M` : '0'}
                                 />
-                                <Area type="monotone" dataKey="total_output" name="Volume (XNA)" stroke="#10b981" fill="#10b981" fillOpacity={0.2} />
+                                <Area type="monotone" dataKey="total_output" name="Volume (XNA)" stroke="#16a34a" fill="#16a34a" fillOpacity={0.15} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
@@ -103,7 +103,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     itemStyle={{ color: 'var(--foreground)' }}
                                     formatter={(value) => typeof value === 'number' && value ? value.toFixed(2) : '0'}
                                 />
-                                <Line type="monotone" dataKey="avg_difficulty" name="Difficulty" stroke="#f59e0b" dot={false} strokeWidth={2} />
+                                <Line type="monotone" dataKey="avg_difficulty" name="Difficulty" stroke="#ea580c" dot={false} strokeWidth={2} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -122,7 +122,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     itemStyle={{ color: 'var(--foreground)' }}
                                     formatter={(value) => typeof value === 'number' && value ? `${value.toFixed(2)} TH/s` : '0'}
                                 />
-                                <Area type="monotone" dataKey="hashrate" name="Hashrate" stroke="#ec4899" fill="#ec4899" fillOpacity={0.2} />
+                                <Area type="monotone" dataKey="hashrate" name="Hashrate" stroke="#f97316" fill="#f97316" fillOpacity={0.15} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
@@ -140,7 +140,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
                                 />
-                                <Line type="monotone" dataKey="active_address_count" name="Active Addrs" stroke="#6366f1" dot={false} strokeWidth={2} />
+                                <Line type="monotone" dataKey="active_address_count" name="Active Addrs" stroke="#0ea5e9" dot={false} strokeWidth={2} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -159,7 +159,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     itemStyle={{ color: 'var(--foreground)' }}
                                     formatter={(value) => typeof value === 'number' && value ? Math.round(value).toLocaleString('en-US') : '0'}
                                 />
-                                <Line type="monotone" dataKey="avg_block_size" name="Avg Size" stroke="#14b8a6" dot={false} strokeWidth={2} />
+                                <Line type="monotone" dataKey="avg_block_size" name="Avg Size" stroke="#6b7280" dot={false} strokeWidth={2} />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -178,7 +178,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     itemStyle={{ color: 'var(--foreground)' }}
                                     formatter={(value) => typeof value === 'number' && value ? value.toFixed(2) : '0'}
                                 />
-                                <Area type="monotone" dataKey="avg_tx_value" name="Avg Value" stroke="#8b5cf6" fill="#8b5cf6" fillOpacity={0.2} />
+                                <Area type="monotone" dataKey="avg_tx_value" name="Avg Value" stroke="#ea580c" fill="#ea580c" fillOpacity={0.15} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
@@ -200,7 +200,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     itemStyle={{ color: 'var(--foreground)' }}
                                     formatter={(value) => typeof value === 'number' && value ? `${(value / 1_000_000).toLocaleString('en-US', { maximumFractionDigits: 2 })} M` : '0'}
                                 />
-                                <Area type="monotone" dataKey="supply" name="Supply" stroke="#eab308" fill="#eab308" fillOpacity={0.1} />
+                                <Area type="monotone" dataKey="supply" name="Supply" stroke="#f97316" fill="#f97316" fillOpacity={0.12} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
@@ -219,7 +219,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
                                 />
-                                <Area type="monotone" dataKey="total_assets" name="Total Assets" stroke="#f43f5e" fill="#f43f5e" fillOpacity={0.1} />
+                                <Area type="monotone" dataKey="total_assets" name="Total Assets" stroke="#0ea5e9" fill="#0ea5e9" fillOpacity={0.12} />
                             </AreaChart>
                         </ResponsiveContainer>
                     </div>
@@ -237,7 +237,7 @@ export default function StatsView({ data }: StatsViewProps) {
                                     contentStyle={{ backgroundColor: 'var(--background)', borderColor: 'var(--border)' }}
                                     itemStyle={{ color: 'var(--foreground)' }}
                                 />
-                                <Bar dataKey="new_assets_count" name="New Assets" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="new_assets_count" name="New Assets" fill="#fb923c" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>

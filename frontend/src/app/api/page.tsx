@@ -33,7 +33,7 @@ function ApiMethod({ title, description, links, note }: ApiMethodProps) {
 export default function ApiDocs() {
     return (
         <div className="flex flex-col gap-8">
-            <h1 className="text-3xl font-bold">API Documentation</h1>
+            <div className="flex flex-col gap-1"><span className="eyebrow">Developers</span><h1 className="text-2xl lg:text-3xl font-bold tracking-tight">API Documentation</h1></div>
 
             <section className="bg-card border border-border rounded-lg p-6">
                 <h2 className="text-2xl font-semibold text-card-foreground mb-2">Amounts</h2>

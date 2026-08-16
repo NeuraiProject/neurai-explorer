@@ -3,7 +3,8 @@ import { TxIdDisplay } from "@/components/TxIdDisplay";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getAssetData, type AssetData } from "@/lib/services/asset";
-import { formatAmount, formatDate, formatSats, satsOf } from "@/lib/utils";
+import { formatDate, satsOf } from "@/lib/utils";
+import { Amount } from "@/components/ui/Amount";
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-4 last:border-0 last:pb-0">
                             <span className="font-medium text-muted-foreground">Amount</span>
-                            <span className="font-mono text-lg">{formatAmount(assetData.amount, { decimals: assetData.units, grouping: true })}</span>
+                            <Amount value={assetData.amount} decimals={assetData.units} grouping className="text-lg" />
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-4 last:border-0 last:pb-0">
                             <span className="font-medium text-muted-foreground">Units</span>
@@ -113,7 +114,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                             {ev.ipfsHash ? <div className="text-xs font-mono text-muted-foreground truncate max-w-[180px]" title={ev.ipfsHash}>{ev.ipfsHash}</div> : null}
                                         </td>
                                         <td className="px-4 py-3 text-right font-mono whitespace-nowrap">
-                                            {formatAmount(ev.amount, { decimals: assetData.units, grouping: true })}
+                                            <Amount value={ev.amount} decimals={assetData.units} grouping />
                                         </td>
                                         <td className="px-4 py-3 font-mono">
                                             <Link href={`/tx/${ev.txid}`} className="text-primary hover:underline">
@@ -157,7 +158,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                                 <Link href={`/address/${mv.address}`} className="text-primary hover:underline block truncate max-w-[220px]" title={mv.address}>{mv.address}</Link>
                                             </td>
                                             <td className={`px-4 py-3 text-right font-mono font-bold whitespace-nowrap ${cls}`}>
-                                                {sign}{formatSats(abs, { decimals: assetData.units, grouping: true })}
+                                                <Amount sats={abs} sign={sign} decimals={assetData.units} grouping />
                                             </td>
                                             <td className="px-4 py-3 font-mono">
                                                 <Link href={`/tx/${mv.txid}`} className="text-primary hover:underline">
@@ -195,8 +196,8 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                             {holder.address}
                                         </Link>
                                     </td>
-                                    <td className="px-6 py-4 text-right font-mono font-bold text-sm lg:text-base">
-                                        {formatAmount(holder.balance, { decimals: assetData.units, grouping: true })}
+                                    <td className="px-6 py-4 text-right font-semibold text-sm lg:text-base">
+                                        <Amount value={holder.balance} decimals={assetData.units} grouping />
                                     </td>
                                 </tr>
                             ))}

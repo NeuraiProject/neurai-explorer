@@ -4,7 +4,8 @@ import { Card } from '@/components/ui/Card';
 import { TxIdDisplay } from "@/components/TxIdDisplay";
 import Link from 'next/link';
 import { AddressAsset, Transaction, TransactionInput, TransactionOutput, Address } from "@/types";
-import { formatAmount, formatSats, satsOf, sumAmounts } from "@/lib/utils";
+import { formatSats, satsOf, sumAmounts } from "@/lib/utils";
+import { Amount } from "@/components/ui/Amount";
 
 export const dynamic = 'force-dynamic';
 
@@ -76,8 +77,8 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
     return (
         <div className="flex flex-col gap-8 container mx-auto px-4 py-8">
             <div>
-                <h1 className="text-3xl font-bold mb-2">Address</h1>
-                <p className="text-muted-foreground break-all font-mono bg-muted/30 p-2 rounded inline-block">{addr.address}</p>
+                <div className="flex flex-col gap-1 mb-2"><span className="eyebrow">Wallet</span><h1 className="text-2xl lg:text-3xl font-bold tracking-tight">Address</h1></div>
+                <p className="mono-box text-muted-foreground inline-block">{addr.address}</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -85,15 +86,15 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                     <div className="p-6 grid gap-4">
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Balance</span>
-                            <span className="font-mono">{formatAmount(addr.balance)} <span className="text-primary">XNA</span></span>
+                            <Amount value={addr.balance} unit="XNA" className="font-medium" unitClassName="text-primary" />
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Total Received</span>
-                            <span className="font-mono text-green-600 dark:text-green-400">{formatAmount(addr.totalReceived)}</span>
+                            <Amount value={addr.totalReceived} className="text-green-600 dark:text-green-400" />
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Total Sent</span>
-                            <span className="font-mono text-red-600 dark:text-red-400">{formatAmount(addr.totalSent)}</span>
+                            <Amount value={addr.totalSent} className="text-red-600 dark:text-red-400" />
                         </div>
                         <div className="flex justify-between items-center border-b border-border pb-2 last:border-0 last:pb-0">
                             <span className="text-muted-foreground text-sm font-medium">Transactions</span>
@@ -110,9 +111,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                     <Link href={`/asset/${asset.asset}`} className="font-medium text-primary hover:underline">
                                         {asset.asset}
                                     </Link>
-                                    <span className="font-mono text-muted-foreground font-bold">
-                                        {formatAmount(asset.balance, { decimals: asset.units ?? 0, grouping: true })}
-                                    </span>
+                                    <Amount value={asset.balance} decimals={asset.units ?? 0} grouping className="text-muted-foreground font-semibold" />
                                 </div>
                             ))
                         ) : (
@@ -134,7 +133,8 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                             : isOutgoing
                                 ? "text-red-600 dark:text-red-400"
                                 : "text-muted-foreground";
-                        const amountLabel = `${isIncoming ? "+" : isOutgoing ? "-" : ""}${formatSats(isOutgoing ? -netSats : netSats, { decimals: 3 })} XNA`;
+                        const amountSign = isIncoming ? "+" : isOutgoing ? "-" : "";
+                        const amountAbs = isOutgoing ? -netSats : netSats;
                         const assetLabels = (tx.assetDeltas ?? [])
                             .filter(a => satsOf(a.delta) !== ZERO)
                             .map(a => ({
@@ -159,7 +159,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                         </Link>
                                     </div>
                                     <div className="hidden lg:flex flex-col items-end gap-1 pr-2">
-                                        <span className={`font-mono font-bold ${amountClass}`}>{amountLabel}</span>
+                                        <Amount sats={amountAbs} sign={amountSign} decimals={3} unit="XNA" className={`font-medium ${amountClass}`} />
                                         {assetLabels.map(a => (
                                             <span key={a.asset} className={`font-mono text-sm ${a.className}`}>
                                                 {a.label} <Link href={`/asset/${a.asset}`} className="hover:underline">{a.asset}</Link>
@@ -170,7 +170,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                     <div className="flex items-center justify-between text-sm text-muted-foreground lg:hidden">
                                         <span>{dateTime}</span>
                                         <span className="flex flex-col items-end">
-                                            <span className={`font-mono font-bold ${amountClass}`}>{amountLabel}</span>
+                                            <Amount sats={amountAbs} sign={amountSign} decimals={3} unit="XNA" className={`font-medium ${amountClass}`} />
                                             {assetLabels.map(a => (
                                                 <span key={a.asset} className={`font-mono ${a.className}`}>
                                                     {a.label} <Link href={`/asset/${a.asset}`} className="hover:underline">{a.asset}</Link>

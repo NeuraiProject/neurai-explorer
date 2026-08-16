@@ -54,26 +54,34 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className={`font-sans antialiased`}>
         <Providers>
           <ThemeProvider
             attribute="class"
-            defaultTheme="dark"
+            defaultTheme="light"
             disableTransitionOnChange
           >
             <div className="flex flex-col min-h-screen bg-background text-foreground">
-              <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="container max-w-7xl mx-auto flex h-16 items-center flex justify-between px-4">
-                  <Link href="/" className="mr-8 flex items-center space-x-2 group">
+              <header className="sticky top-0 z-50 w-full border-b border-border bg-card">
+                <div className="container max-w-7xl mx-auto flex h-16 items-center justify-between gap-4 px-4 lg:px-6">
+                  <Link href="/" className="flex items-center gap-3 shrink-0 group">
                     <img
                       src={config.site.logoPath || "/neurai-logo.png"}
                       alt={config.site.logoAlt || `${config.site.coinName} Logo`}
-                      className="w-8 h-8 rounded-full"
+                      className="w-10 h-10 rounded-full"
                     />
                     <HomeLabel />
                   </Link>
                   <HeaderNav className="hidden lg:flex" />
-                  <nav className="flex items-center space-x-3">
+                  <nav className="flex items-center gap-2 sm:gap-3">
                     <SyncStatus />
                     <div className="hidden lg:block">
                       <ThemeToggle />
@@ -82,19 +90,23 @@ export default function RootLayout({
                   </nav>
                 </div>
               </header>
-              <main className="flex-1 container max-w-7xl mx-auto py-8 px-4">{children}</main>
-              <footer className="border-t border-border py-8 bg-muted/30">
-                <div className="container max-w-7xl mx-auto flex flex-col items-center gap-4 text-center text-sm text-muted-foreground">
-                  <p>© {new Date().getFullYear()} Neurai Project.</p>
+              <main className="flex-1 container max-w-7xl mx-auto py-6 lg:py-8 px-4 lg:px-6">{children}</main>
+              <footer className="border-t border-border bg-card">
+                <div className="container max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 px-4 lg:px-6 py-6 text-sm text-muted-foreground">
+                  <p>
+                    © {new Date().getFullYear()} Neurai ·{" "}
+                    <a href="https://neurai.org" target="_blank" rel="noreferrer" className="text-link hover:underline">
+                      neurai.org
+                    </a>
+                  </p>
                   <FooterSocials />
                 </div>
               </footer>
             </div>
             <ScrollToTop />
-
           </ThemeProvider>
         </Providers>
-      </body >
-    </html >
+      </body>
+    </html>
   );
 }

@@ -7,7 +7,8 @@ import { TxIdDisplay } from '@/components/TxIdDisplay';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Transaction } from "@/types";
-import { formatAmount, getTotalOutput } from '@/lib/utils';
+import { getTotalOutput } from '@/lib/utils';
+import { Amount } from '@/components/ui/Amount';
 
 export default function BlockPage() {
     const { id } = useParams();
@@ -25,13 +26,13 @@ export default function BlockPage() {
 
     return (
         <div className="flex flex-col gap-6">
-            <h1 className="text-3xl font-bold mb-2">Block <span className="font-mono text-muted-foreground">#{block.height}</span></h1>
+            <div className="flex flex-col gap-1 mb-2"><span className="eyebrow">Block</span><h1 className="text-2xl lg:text-3xl font-bold tracking-tight font-mono">#{block.height}</h1></div>
 
             <Card title="Overview">
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                     <div className="flex flex-col gap-1 md:col-span-2">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Hash</span>
-                        <span className="font-mono text-sm lg:text-base break-all bg-muted/30 p-2 rounded">{block.hash}</span>
+                        <span className="mono-box text-sm lg:text-base">{block.hash}</span>
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Confirmations</span>
@@ -60,7 +61,7 @@ export default function BlockPage() {
                     {block.previousblockhash && (
                         <div className="flex flex-col gap-1 md:col-span-2">
                             <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Previous Block</span>
-                            <Link href={`/block/${block.previousblockhash}`} className="font-mono text-sm break-all bg-muted/30 p-2 rounded hover:text-primary transition-colors">
+                            <Link href={`/block/${block.previousblockhash}`} className="mono-box text-sm hover:text-primary transition-colors">
                                 {block.previousblockhash}
                             </Link>
                         </div>
@@ -68,7 +69,7 @@ export default function BlockPage() {
                     {block.nextblockhash && (
                         <div className="flex flex-col gap-1 md:col-span-2">
                             <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Next Block</span>
-                            <Link href={`/block/${block.nextblockhash}`} className="font-mono text-sm break-all bg-muted/30 p-2 rounded hover:text-primary transition-colors">
+                            <Link href={`/block/${block.nextblockhash}`} className="mono-box text-sm hover:text-primary transition-colors">
                                 {block.nextblockhash}
                             </Link>
                         </div>
@@ -92,9 +93,7 @@ export default function BlockPage() {
                                     </Link>
                                 </div>
                                 <div className="flex items-center justify-end pr-2">
-                                    <span className="font-mono font-bold">
-                                        <span className="text-green-600 dark:text-green-400">{formatAmount(getTotalOutput(tx))}</span> XNA
-                                    </span>
+                                    <Amount value={getTotalOutput(tx)} unit="XNA" className="font-medium text-green-600 dark:text-green-400" />
                                 </div>
                             </div>
                         </Card>
