@@ -158,8 +158,12 @@ services:
       dockerfile: Dockerfile
     container_name: neurai-explorer-frontend
     restart: unless-stopped
+    # Published on loopback only: put your reverse proxy (nginx) in front and
+    # let it terminate TLS. Docker's port publishing bypasses ufw/firewalld,
+    # so binding to 127.0.0.1 is what actually keeps it off the internet. Set
+    # FRONTEND_BIND=0.0.0.0 to expose it directly (e.g. on a LAN).
     ports:
-      - "${FRONTEND_PORT:-3333}:3000"
+      - "${FRONTEND_BIND:-127.0.0.1}:${FRONTEND_PORT:-3333}:3000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-neurai}:${POSTGRES_PASSWORD:-neurai123}@postgres:5432/${POSTGRES_DB:-neuraidb}
       NEURAI_RPC_URL: http://node:19001
