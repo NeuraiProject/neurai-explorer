@@ -33,6 +33,12 @@ impl DailyStatsSync {
     pub async fn run(&mut self) -> Result<()> {
         info!("Starting daily stats sync");
 
+        match DailyStatsRepository::ensure_version(&self.pool).await {
+            Ok(true) => info!("Daily stats aggregation changed: recomputing the whole table"),
+            Ok(false) => {}
+            Err(e) => error!(error = %e, "Failed to check daily stats version"),
+        }
+
         if let Err(e) = self.aggregate().await {
             error!(error = %e, "Failed to sync daily stats");
         }

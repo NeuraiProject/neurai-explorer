@@ -1011,11 +1011,13 @@ async fn daily_stats_aggregation_runs_and_buckets_by_utc_day() {
 
     DailyStatsRepository::aggregate_from_date(&pool, NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()).await.unwrap();
 
-    let rows: Vec<(NaiveDate, i32, i32, BigDecimal, i32, i32)> = sqlx::query_as(
-        "SELECT date, block_count, tx_count, total_output, new_assets_count, active_address_count FROM daily_stats ORDER BY date",
+    let rows: Vec<(NaiveDate, i32, i32, BigDecimal, i32, i32, BigDecimal)> = sqlx::query_as(
+        "SELECT date, block_count, tx_count, total_output, new_assets_count, active_address_count, new_supply FROM daily_stats ORDER BY date",
     ).fetch_all(&pool).await.unwrap();
     assert_eq!(rows.len(), 1);
-    let (date, blocks, txs, vol, new_assets, active) = &rows[0];
+    let (date, blocks, txs, vol, new_assets, active, new_supply) = &rows[0];
+    // 4 coinbases of 50000 minus the fees they collected (0.1 + 0.1 + 0.1 + 0)
+    assert_eq!(n(new_supply), "199999.7");
     assert_eq!(*date, NaiveDate::from_ymd_opt(2023, 11, 14).unwrap());
     assert_eq!(*blocks, 4);
     assert_eq!(*txs, 8);
@@ -1029,6 +1031,13 @@ async fn daily_stats_aggregation_runs_and_buckets_by_utc_day() {
     let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM daily_stats").fetch_one(&pool).await.unwrap();
     assert_eq!(count, 1);
     assert_eq!(DailyStatsRepository::latest_date(&pool).await.unwrap(), Some(*date));
+
+    // A version bump wipes the table (rebuilt by the next aggregation)
+    sqlx::query("DELETE FROM sync_state WHERE key = 'daily_stats_version'").execute(&pool).await.unwrap();
+    assert!(DailyStatsRepository::ensure_version(&pool).await.unwrap());
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM daily_stats").fetch_one(&pool).await.unwrap();
+    assert_eq!(count, 0);
+    assert!(!DailyStatsRepository::ensure_version(&pool).await.unwrap(), "already at the current version");
 }
 
 

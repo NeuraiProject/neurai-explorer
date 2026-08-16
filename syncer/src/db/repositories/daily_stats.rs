@@ -4,9 +4,37 @@ use tracing::debug;
 
 use crate::error::Result;
 
+/// Version of the aggregation logic. When it changes, the whole table is
+/// recomputed on the next start (see `ensure_version`).
+pub const DAILY_STATS_VERSION: &str = "2";
+
 pub struct DailyStatsRepository;
 
 impl DailyStatsRepository {
+    /// Wipe `daily_stats` if it was computed by an older aggregation, so the
+    /// next `aggregate_from_date` rebuilds it from the beginning. Returns
+    /// true when a rebuild was scheduled.
+    pub async fn ensure_version(pool: &PgPool) -> Result<bool> {
+        let stored: Option<(Option<String>,)> =
+            sqlx::query_as("SELECT value FROM sync_state WHERE key = 'daily_stats_version'")
+                .fetch_optional(pool)
+                .await?;
+        if stored.and_then(|(v,)| v).as_deref() == Some(DAILY_STATS_VERSION) {
+            return Ok(false);
+        }
+        let mut tx = pool.begin().await?;
+        sqlx::query("TRUNCATE daily_stats").execute(&mut *tx).await?;
+        sqlx::query(
+            "INSERT INTO sync_state (key, value) VALUES ('daily_stats_version', $1) \
+             ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+        )
+        .bind(DAILY_STATS_VERSION)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
     pub async fn latest_date(pool: &PgPool) -> Result<Option<NaiveDate>> {
         let row: Option<(NaiveDate,)> = sqlx::query_as(
             "SELECT date FROM daily_stats ORDER BY date DESC LIMIT 1",
@@ -59,8 +87,7 @@ impl DailyStatsRepository {
                     COUNT(*) AS blk_cnt,
                     SUM(difficulty) AS sum_diff,
                     SUM(tx_count) AS tx_cnt,
-                    SUM((raw_data->>'size')::bigint) AS sum_size,
-                    SUM(50000 * POWER(0.95, FLOOR(b.height::numeric / 14400))) AS new_sup
+                    SUM((raw_data->>'size')::bigint) AS sum_size
                 FROM blocks b
                 WHERE b.time >= $1
                 GROUP BY 1
@@ -68,7 +95,11 @@ impl DailyStatsRepository {
             vol_stats AS (
                 SELECT
                     (to_timestamp(t.time) AT TIME ZONE 'UTC')::date AS day,
-                    SUM(t.total_output) AS vol
+                    SUM(t.total_output) AS vol,
+                    -- Newly issued coins: what the coinbases paid out minus
+                    -- the fees they collected from the other transactions.
+                    SUM(CASE WHEN t.tx_index = 0 THEN t.total_output
+                             ELSE -COALESCE(t.fee, 0) END) AS new_sup
                 FROM transactions t
                 WHERE t.time >= $1
                 GROUP BY 1
@@ -112,7 +143,7 @@ impl DailyStatsRepository {
                 COALESCE(ads.active_addrs, 0),
                 0,
                 bs.sum_size,
-                bs.new_sup
+                COALESCE(vs.new_sup, 0)
             FROM block_stats bs
             LEFT JOIN vol_stats vs ON bs.day = vs.day
             LEFT JOIN asset_stats ans ON bs.day = ans.day
