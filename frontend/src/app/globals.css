@@ -95,6 +95,18 @@
   ::selection {
     background: var(--primary-soft-border);
   }
+
+  /* Desktop: keep the root at 1rem (16px) so every rem-based Tailwind size
+     resolves from a single, explicit base. */
+  @media (min-width: 1024px) {
+    html {
+      font-size: 1rem;
+    }
+
+    body {
+      font-size: 1rem;
+    }
+  }
 }
 
 @layer components {
@@ -132,3 +144,10 @@
 /* Thin, unobtrusive scrollbars inside scrollable cards */
 .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
 .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+
+/* Inter renders quite heavy at 600, so `font-semibold` is neutralised to the
+   normal weight; use `font-bold` / `font-medium` where emphasis is really needed.
+   Kept outside @layer so it wins over Tailwind's own utility. */
+.font-semibold {
+  font-weight: 400;
+}

@@ -85,7 +85,7 @@ function RecentBlocks() {
             </div>
             <div className="hidden lg:grid grid-cols-[1fr_auto_1fr] items-center w-full gap-4">
               <div className="flex flex-col justify-center">
-                <Link href={`/block/${block.height}`} className="font-semibold text-primary text-base lg:text-xl hover:underline truncate">
+                <Link href={`/block/${block.height}`} className="font-semibold text-primary text-base hover:underline truncate">
                   #{block.height}
                 </Link>
                 <div className="text-sm lg:text-base text-muted-foreground whitespace-nowrap">
@@ -152,7 +152,7 @@ function RecentTransactions() {
               </Link>
             </div>
             <div className="hidden lg:flex flex-col items-start lg:items-end justify-center w-full lg:w-auto min-w-0 lg:min-w-[160px]">
-              <Amount value={tx.totalOutput} decimals={2} unit="XNA" className="font-medium text-green-600 dark:text-green-400 text-base lg:text-xl" />
+              <Amount value={tx.totalOutput} decimals={2} unit="XNA" className="font-medium text-green-600 dark:text-green-400 text-base" />
               <div className="text-sm lg:text-base text-muted-foreground flex items-center gap-1">
                 <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-semibold">#{tx.height}</Link>
               </div>
