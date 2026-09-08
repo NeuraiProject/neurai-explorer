@@ -34,7 +34,7 @@ export default function RichListPage() {
                                 <tr key={item.address} className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors">
                                     <td className="p-3 text-center text-muted-foreground w-16">{index + 1}</td>
                                     <td className="p-3">
-                                        <Link href={`/address/${item.address}`} className="text-link hover:underline font-mono">
+                                        <Link href={`/address/${item.address}`} prefetch={false} className="text-link hover:underline font-mono">
                                             {item.address}
                                         </Link>
                                     </td>
@@ -53,7 +53,7 @@ export default function RichListPage() {
                                 {index + 1}
                             </div>
                             <div className="flex flex-col items-center justify-center min-w-0">
-                                <Link href={`/address/${item.address}`} className="text-link hover:underline font-mono truncate max-w-full">
+                                <Link href={`/address/${item.address}`} prefetch={false} className="text-link hover:underline font-mono truncate max-w-full">
                                     {item.address}
                                 </Link>
                                 <span className="font-mono font-semibold">

@@ -16,7 +16,7 @@ function AssetLine({ asset, className }: { asset?: ScriptAsset; className?: stri
     return (
         <div className={`font-mono text-xs whitespace-nowrap ${className ?? ''}`}>
             <Amount value={asset.amount} trim grouping />{' '}
-            <Link href={`/asset/${encodeURIComponent(asset.name)}`} className="hover:underline">{asset.name}</Link>
+            <Link href={`/asset/${encodeURIComponent(asset.name)}`} prefetch={false} className="hover:underline">{asset.name}</Link>
         </div>
     );
 }
@@ -51,7 +51,7 @@ export default function TxPage() {
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Block Height</span>
-                        <Link href={`/block/${tx.height}`} className="text-primary font-bold hover:underline">{tx.height}</Link>
+                        <Link href={`/block/${tx.height}`} prefetch={false} className="text-primary font-bold hover:underline">{tx.height}</Link>
                     </div>
                     <div className="flex flex-col gap-1">
                         <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Time</span>
@@ -89,7 +89,7 @@ export default function TxPage() {
                                     {vin.coinbase ? (
                                         <span className="text-yellow-600 dark:text-yellow-400 font-medium text-sm">Coinbase (Newly Generated Coins)</span>
                                     ) : (
-                                        <Link href={`/address/${vin.addresses?.[0]}`} className="text-primary font-mono text-sm hover:underline block truncate">
+                                        <Link href={`/address/${vin.addresses?.[0]}`} prefetch={false} className="text-primary font-mono text-sm hover:underline block truncate">
                                             {vin.addresses?.[0] || 'Unknown'}
                                         </Link>
                                     )}
@@ -109,7 +109,7 @@ export default function TxPage() {
                         {tx.vout.filter(vout => vout.scriptPubKey?.addresses?.[0]).map((vout, idx) => (
                             <li key={idx} className="flex justify-between items-center p-3 bg-muted/20 rounded-lg border border-transparent hover:border-border transition-colors">
                                 <div className="flex-1 min-w-0 mr-4">
-                                    <Link href={`/address/${vout.scriptPubKey!.addresses![0]}`} className="text-primary font-mono text-sm lg:text-base hover:underline block truncate">
+                                    <Link href={`/address/${vout.scriptPubKey!.addresses![0]}`} prefetch={false} className="text-primary font-mono text-sm lg:text-base hover:underline block truncate">
                                         {vout.scriptPubKey!.addresses![0]}
                                     </Link>
                                 </div>

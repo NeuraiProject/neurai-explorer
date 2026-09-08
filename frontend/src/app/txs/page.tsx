@@ -43,7 +43,7 @@ export default function TransactionsPage() {
                                     return (
                                         <div key={tx.txid} className="flex flex-col gap-2 py-3 border-b border-border last:border-0 hover:bg-muted/50 px-4 transition-colors">
                                             <Link
-                                                href={`/tx/${tx.txid}`}
+                                                href={`/tx/${tx.txid}`} prefetch={false}
                                                 className="block w-full min-w-0 overflow-hidden font-mono text-muted-foreground hover:text-foreground hover:underline"
                                                 title={tx.txid}
                                             >
@@ -53,7 +53,7 @@ export default function TransactionsPage() {
                                                 <Amount value={totalOutput} decimals={2} unit="XNA" />
                                             </div>
                                             <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                                <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-bold">
+                                                <Link href={`/block/${tx.height}`} prefetch={false} className="text-primary hover:underline font-bold">
                                                     #{tx.height}
                                                 </Link>
                                                 <span className="whitespace-nowrap">{formatDate(tx.blocktime)}</span>
@@ -77,11 +77,11 @@ export default function TransactionsPage() {
 
                                     return (
                                         <div key={tx.txid} className="grid grid-cols-5 items-center gap-4 py-3 border-b border-border last:border-0 hover:bg-muted/50 px-6 transition-colors">
-                                            <Link href={`/block/${tx.height}`} className="font-bold text-primary hover:underline">
+                                            <Link href={`/block/${tx.height}`} prefetch={false} className="font-bold text-primary hover:underline">
                                                 #{tx.height}
                                             </Link>
                                             <div>{recipients}</div>
-                                            <Link href={`/tx/${tx.txid}`} className="block min-w-0 font-mono text-primary hover:underline">
+                                            <Link href={`/tx/${tx.txid}`} prefetch={false} className="block min-w-0 font-mono text-primary hover:underline">
                                                 <TxIdDisplay txid={tx.txid} className="text-base" />
                                             </Link>
                                             <div className={`justify-self-end rounded-lg px-2 py-1 text-right font-semibold ${getAmountClass(totalOutput)}`}>

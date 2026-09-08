@@ -108,7 +108,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                         {assetBalances.length > 0 ? (
                             assetBalances.map((asset: AddressAsset, i: number) => (
                                 <div key={i} className="flex justify-between items-center p-3 bg-muted/20 rounded-lg hover:bg-muted/40 transition-colors">
-                                    <Link href={`/asset/${asset.asset}`} className="font-medium text-primary hover:underline">
+                                    <Link href={`/asset/${asset.asset}`} prefetch={false} className="font-medium text-primary hover:underline">
                                         {asset.asset}
                                     </Link>
                                     <Amount value={asset.balance} decimals={asset.units ?? 0} grouping className="text-muted-foreground font-semibold" />
@@ -154,7 +154,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                             <Card key={tx.txid}>
                                 <div className="p-4 flex flex-col lg:grid lg:grid-cols-[65%_35%] lg:items-center gap-3">
                                     <div className="flex flex-col min-w-0">
-                                        <Link href={`/tx/${tx.txid}`} className="block min-w-0 overflow-hidden text-primary font-mono text-sm lg:text-base hover:underline">
+                                        <Link href={`/tx/${tx.txid}`} prefetch={false} className="block min-w-0 overflow-hidden text-primary font-mono text-sm lg:text-base hover:underline">
                                             <TxIdDisplay txid={tx.txid} className="text-sm lg:text-base" />
                                         </Link>
                                     </div>
@@ -162,7 +162,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                         <Amount sats={amountAbs} sign={amountSign} decimals={3} unit="XNA" className={`font-medium ${amountClass}`} />
                                         {assetLabels.map(a => (
                                             <span key={a.asset} className={`font-mono text-sm ${a.className}`}>
-                                                {a.label} <Link href={`/asset/${a.asset}`} className="hover:underline">{a.asset}</Link>
+                                                {a.label} <Link href={`/asset/${a.asset}`} prefetch={false} className="hover:underline">{a.asset}</Link>
                                             </span>
                                         ))}
                                         <span className="text-sm text-muted-foreground">{dateTime}</span>
@@ -173,7 +173,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                                             <Amount sats={amountAbs} sign={amountSign} decimals={3} unit="XNA" className={`font-medium ${amountClass}`} />
                                             {assetLabels.map(a => (
                                                 <span key={a.asset} className={`font-mono ${a.className}`}>
-                                                    {a.label} <Link href={`/asset/${a.asset}`} className="hover:underline">{a.asset}</Link>
+                                                    {a.label} <Link href={`/asset/${a.asset}`} prefetch={false} className="hover:underline">{a.asset}</Link>
                                                 </span>
                                             ))}
                                         </span>
@@ -187,13 +187,13 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
 
             <div className="flex justify-between items-center mt-4 bg-muted/20 p-4 rounded-lg">
                 {page > 1 ? (
-                    <Link href={`/address/${addrStr}?page=${page - 1}`} className="text-primary hover:underline">&larr; Previous</Link>
+                    <Link href={`/address/${addrStr}?page=${page - 1}`} prefetch={false} className="text-primary hover:underline">&larr; Previous</Link>
                 ) : <span className="text-muted-foreground pointer-events-none opacity-50">&larr; Previous</span>}
 
                 <span className="text-sm font-medium text-muted-foreground">Page {addr.page} of {addr.totalPages}</span>
 
                 {page < (addr.totalPages || 0) ? (
-                    <Link href={`/address/${addrStr}?page=${page + 1}`} className="text-primary hover:underline">Next &rarr;</Link>
+                    <Link href={`/address/${addrStr}?page=${page + 1}`} prefetch={false} className="text-primary hover:underline">Next &rarr;</Link>
                 ) : <span className="text-muted-foreground pointer-events-none opacity-50">Next &rarr;</span>}
             </div>
         </div>

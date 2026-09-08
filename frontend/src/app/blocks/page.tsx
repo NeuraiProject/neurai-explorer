@@ -46,7 +46,7 @@ export default function BlocksPage() {
                                         {blocks.map((block) => (
                                             <tr key={block.hash} className="bg-card border-b border-border hover:bg-muted/50 transition-colors">
                                                 <td className="px-6 py-4">
-                                                    <Link href={`/block/${block.height}`} className="font-bold text-primary hover:underline">
+                                                    <Link href={`/block/${block.height}`} prefetch={false} className="font-bold text-primary hover:underline">
                                                         {block.height}
                                                     </Link>
                                                 </td>
@@ -71,7 +71,7 @@ export default function BlocksPage() {
                                 {blocks.map((block) => (
                                     <div key={block.hash} className="grid grid-cols-[72px_1fr] gap-3 px-4 py-3 border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
                                         <div className="flex items-center justify-center text-center">
-                                            <Link href={`/block/${block.height}`} className="font-bold text-primary hover:underline">
+                                            <Link href={`/block/${block.height}`} prefetch={false} className="font-bold text-primary hover:underline">
                                                 {block.height}
                                             </Link>
                                         </div>

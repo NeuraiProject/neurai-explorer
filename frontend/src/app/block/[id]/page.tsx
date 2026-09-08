@@ -61,7 +61,7 @@ export default function BlockPage() {
                     {block.previousblockhash && (
                         <div className="flex flex-col gap-1 md:col-span-2">
                             <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Previous Block</span>
-                            <Link href={`/block/${block.previousblockhash}`} className="mono-box text-sm hover:text-primary transition-colors">
+                            <Link href={`/block/${block.previousblockhash}`} prefetch={false} className="mono-box text-sm hover:text-primary transition-colors">
                                 {block.previousblockhash}
                             </Link>
                         </div>
@@ -69,7 +69,7 @@ export default function BlockPage() {
                     {block.nextblockhash && (
                         <div className="flex flex-col gap-1 md:col-span-2">
                             <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Next Block</span>
-                            <Link href={`/block/${block.nextblockhash}`} className="mono-box text-sm hover:text-primary transition-colors">
+                            <Link href={`/block/${block.nextblockhash}`} prefetch={false} className="mono-box text-sm hover:text-primary transition-colors">
                                 {block.nextblockhash}
                             </Link>
                         </div>
@@ -88,7 +88,7 @@ export default function BlockPage() {
                         <Card key={tx.txid}>
                             <div className="p-4 flex flex-col lg:grid lg:grid-cols-[65%_35%] lg:items-center gap-2 lg:gap-4">
                                 <div className="flex flex-col min-w-0">
-                                    <Link href={`/tx/${tx.txid}`} className="block w-full min-w-0 overflow-hidden text-primary font-mono text-sm lg:text-base hover:underline">
+                                    <Link href={`/tx/${tx.txid}`} prefetch={false} className="block w-full min-w-0 overflow-hidden text-primary font-mono text-sm lg:text-base hover:underline">
                                         <TxIdDisplay txid={tx.txid} className="text-sm lg:text-base" />
                                     </Link>
                                 </div>

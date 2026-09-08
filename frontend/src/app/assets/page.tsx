@@ -50,7 +50,7 @@ export default function AssetsPage() {
                                                     {asset.time ? formatDate(asset.time) : 'Pending...'}
                                                 </td>
                                                 <td className="px-6 py-4 font-bold text-primary">
-                                                    <Link href={`/asset/${asset.name}`} className="hover:underline">
+                                                    <Link href={`/asset/${asset.name}`} prefetch={false} className="hover:underline">
                                                         {asset.name}
                                                     </Link>
                                                 </td>
@@ -77,7 +77,7 @@ export default function AssetsPage() {
                                                     )}
                                                 </td>
                                                 <td className="px-6 py-4 text-right">
-                                                    <Link href={`/asset/${asset.name}`} className="text-muted-foreground hover:text-primary transition-colors text-sm border border-border rounded px-2 py-1">
+                                                    <Link href={`/asset/${asset.name}`} prefetch={false} className="text-muted-foreground hover:text-primary transition-colors text-sm border border-border rounded px-2 py-1">
                                                         Details
                                                     </Link>
                                                 </td>

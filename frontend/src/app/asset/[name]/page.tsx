@@ -68,7 +68,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                         )}
                         <div className="flex flex-col gap-2 border-b border-border pb-4 last:border-0 last:pb-0">
                             <span className="font-medium text-muted-foreground">Transaction ID</span>
-                            <Link href={`/tx/${assetData.txid}`} className="block min-w-0 overflow-hidden text-primary hover:underline text-sm font-mono">
+                            <Link href={`/tx/${assetData.txid}`} prefetch={false} className="block min-w-0 overflow-hidden text-primary hover:underline text-sm font-mono">
                                 <TxIdDisplay txid={assetData.txid} className="text-sm" />
                             </Link>
                         </div>
@@ -104,7 +104,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                 {events.map(ev => (
                                     <tr key={`${ev.txid}:${ev.voutN}`} className="border-b border-border hover:bg-muted/50 transition-colors">
                                         <td className="px-4 py-3 whitespace-nowrap">
-                                            <Link href={`/block/${ev.blockHeight}`} className="text-primary hover:underline font-mono">#{ev.blockHeight}</Link>
+                                            <Link href={`/block/${ev.blockHeight}`} prefetch={false} className="text-primary hover:underline font-mono">#{ev.blockHeight}</Link>
                                             {ev.time ? <div className="text-xs text-muted-foreground">{formatDate(ev.time)}</div> : null}
                                         </td>
                                         <td className="px-4 py-3">
@@ -117,7 +117,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                             <Amount value={ev.amount} decimals={assetData.units} grouping />
                                         </td>
                                         <td className="px-4 py-3 font-mono">
-                                            <Link href={`/tx/${ev.txid}`} className="text-primary hover:underline">
+                                            <Link href={`/tx/${ev.txid}`} prefetch={false} className="text-primary hover:underline">
                                                 <TxIdDisplay txid={ev.txid} className="text-xs" />
                                             </Link>
                                         </td>
@@ -151,17 +151,17 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                     return (
                                         <tr key={`${mv.txid}:${mv.address}`} className="border-b border-border hover:bg-muted/50 transition-colors">
                                             <td className="px-4 py-3 whitespace-nowrap">
-                                                {mv.blockHeight !== null ? <Link href={`/block/${mv.blockHeight}`} className="text-primary hover:underline font-mono">#{mv.blockHeight}</Link> : '—'}
+                                                {mv.blockHeight !== null ? <Link href={`/block/${mv.blockHeight}`} prefetch={false} className="text-primary hover:underline font-mono">#{mv.blockHeight}</Link> : '—'}
                                                 {mv.time ? <div className="text-xs text-muted-foreground">{formatDate(mv.time)}</div> : null}
                                             </td>
                                             <td className="px-4 py-3 font-mono">
-                                                <Link href={`/address/${mv.address}`} className="text-primary hover:underline block truncate max-w-[220px]" title={mv.address}>{mv.address}</Link>
+                                                <Link href={`/address/${mv.address}`} prefetch={false} className="text-primary hover:underline block truncate max-w-[220px]" title={mv.address}>{mv.address}</Link>
                                             </td>
                                             <td className={`px-4 py-3 text-right font-mono font-bold whitespace-nowrap ${cls}`}>
                                                 <Amount sats={abs} sign={sign} decimals={assetData.units} grouping />
                                             </td>
                                             <td className="px-4 py-3 font-mono">
-                                                <Link href={`/tx/${mv.txid}`} className="text-primary hover:underline">
+                                                <Link href={`/tx/${mv.txid}`} prefetch={false} className="text-primary hover:underline">
                                                     <TxIdDisplay txid={mv.txid} className="text-xs" />
                                                 </Link>
                                             </td>
@@ -192,7 +192,7 @@ export default async function AssetPage({ params }: { params: Promise<{ name: st
                                 <tr key={holder.address} className="border-b border-border hover:bg-muted/50 transition-colors">
                                     <td className="px-6 py-4 text-center text-muted-foreground text-sm">{idx + 1}</td>
                                     <td className="px-6 py-4 font-mono text-sm lg:text-base">
-                                        <Link href={`/address/${holder.address}`} className="text-primary hover:underline">
+                                        <Link href={`/address/${holder.address}`} prefetch={false} className="text-primary hover:underline">
                                             {holder.address}
                                         </Link>
                                     </td>

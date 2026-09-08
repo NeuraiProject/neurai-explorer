@@ -73,7 +73,7 @@ function RecentBlocks() {
         {blocks && blocks.map(block => (
           <li key={block.hash} className="flex flex-row items-center justify-between py-3 border-b border-border last:border-0 hover:bg-muted px-4 lg:px-6 transition-colors gap-2">
             <div className="flex w-full items-center justify-between gap-2 lg:hidden">
-              <Link href={`/block/${block.height}`} className="font-semibold text-primary text-base hover:underline truncate">
+              <Link href={`/block/${block.height}`} prefetch={false} className="font-semibold text-primary text-base hover:underline truncate">
                 #{block.height}
               </Link>
               <div className="text-sm text-muted-foreground whitespace-nowrap text-center flex-1">
@@ -85,7 +85,7 @@ function RecentBlocks() {
             </div>
             <div className="hidden lg:grid grid-cols-[1fr_auto_1fr] items-center w-full gap-4">
               <div className="flex flex-col justify-center">
-                <Link href={`/block/${block.height}`} className="font-semibold text-primary text-base hover:underline truncate">
+                <Link href={`/block/${block.height}`} prefetch={false} className="font-semibold text-primary text-base hover:underline truncate">
                   #{block.height}
                 </Link>
                 <div className="text-sm lg:text-base text-muted-foreground whitespace-nowrap">
@@ -133,28 +133,28 @@ function RecentTransactions() {
           <li key={tx.txid} className="flex flex-col lg:flex-row lg:items-center justify-between py-3 border-b border-border last:border-0 hover:bg-muted px-4 lg:px-6 transition-colors gap-2 lg:gap-4">
             <div className="flex flex-col gap-2 w-full lg:hidden">
               <Link
-                href={`/tx/${tx.txid}`}
+                href={`/tx/${tx.txid}`} prefetch={false}
                 className="block w-full min-w-0 overflow-hidden font-mono text-muted-foreground hover:text-foreground hover:underline"
                 title={tx.txid}
               >
                 <TxIdDisplay txid={tx.txid} className="text-sm" />
               </Link>
               <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-semibold">
+                <Link href={`/block/${tx.height}`} prefetch={false} className="text-primary hover:underline font-semibold">
                   #{tx.height}
                 </Link>
                 <Amount value={tx.totalOutput} decimals={2} unit="XNA" className="font-medium text-green-600 dark:text-green-400" />
               </div>
             </div>
             <div className="hidden lg:flex items-center overflow-hidden w-full lg:flex-1">
-              <Link href={`/tx/${tx.txid}`} className="block w-full min-w-0 overflow-hidden font-mono text-muted-foreground hover:text-foreground hover:underline" title={tx.txid}>
+              <Link href={`/tx/${tx.txid}`} prefetch={false} className="block w-full min-w-0 overflow-hidden font-mono text-muted-foreground hover:text-foreground hover:underline" title={tx.txid}>
                 <TxIdDisplay txid={tx.txid} className="text-sm lg:text-base" />
               </Link>
             </div>
             <div className="hidden lg:flex flex-col items-start lg:items-end justify-center w-full lg:w-auto min-w-0 lg:min-w-[160px]">
               <Amount value={tx.totalOutput} decimals={2} unit="XNA" className="font-medium text-green-600 dark:text-green-400 text-base" />
               <div className="text-sm lg:text-base text-muted-foreground flex items-center gap-1">
-                <Link href={`/block/${tx.height}`} className="text-primary hover:underline font-semibold">#{tx.height}</Link>
+                <Link href={`/block/${tx.height}`} prefetch={false} className="text-primary hover:underline font-semibold">#{tx.height}</Link>
               </div>
             </div>
           </li>
