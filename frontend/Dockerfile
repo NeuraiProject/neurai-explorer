@@ -30,6 +30,7 @@ RUN adduser --system --uid 1001 nextjs
 # Copy standalone build
 COPY --from=builder /app/public ./public
 COPY ecosystem.config.js ./
+COPY --from=builder /app/diagnostics ./diagnostics
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
 

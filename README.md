@@ -433,6 +433,13 @@ neurai-explorer/
 
 ---
 
+## CPU diagnostics
+
+See [CPU measurement tools](tools/cpu/README.md) for opt-in per-worker metrics,
+passive collection over SSH, fixed local/staging workloads and CPU profiles.
+Instrumentation is disabled by default. The initial local measurements are
+recorded in [the baseline report](tools/cpu/BASELINE.local.md).
+
 ## Contributing
 
 Contributions are welcome! Please read our contributing guidelines before submitting PRs.

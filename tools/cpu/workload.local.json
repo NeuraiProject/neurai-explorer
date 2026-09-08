@@ -1,0 +1,111 @@
+{
+  "description": "Fixed local diagnostic mix. RSC requests use RSC:1 without a browser router tree; not a navigation correctness test. Largest block is only the largest among the 100 latest sampled blocks.",
+  "dataset": {
+    "sampledTip": 1772036,
+    "largestSampledBlock": 1772018,
+    "largestSampledTxCount": 3,
+    "addressPages": 17385
+  },
+  "requests": [
+    {
+      "name": "home-html",
+      "path": "/",
+      "headers": {},
+      "contentType": "text/html"
+    },
+    {
+      "name": "blocks-rsc",
+      "path": "/blocks?_rsc=baseline",
+      "headers": {},
+      "contentType": "text/html"
+    },
+    {
+      "name": "transactions-rsc",
+      "path": "/txs?_rsc=baseline",
+      "headers": {},
+      "contentType": "text/html"
+    },
+    {
+      "name": "status-api",
+      "path": "/api/status",
+      "headers": {},
+      "contentType": "application/json"
+    },
+    {
+      "name": "blocks-api",
+      "path": "/api/blocks?limit=10",
+      "headers": {},
+      "contentType": "application/json"
+    },
+    {
+      "name": "transactions-api",
+      "path": "/api/txs?limit=10",
+      "headers": {},
+      "contentType": "application/json"
+    },
+    {
+      "name": "block-small-api",
+      "path": "/api/block/1772036",
+      "headers": {},
+      "contentType": "application/json"
+    },
+    {
+      "name": "block-largest-sampled-api",
+      "path": "/api/block/1772018",
+      "headers": {},
+      "contentType": "application/json"
+    },
+    {
+      "name": "transaction-api",
+      "path": "/api/tx/4cfe0bba62d978b19d9ab350172e06982c3da21e7d5ebe082ab5542850c5dab1",
+      "headers": {},
+      "contentType": "application/json"
+    },
+    {
+      "name": "address-rsc-0",
+      "path": "/address/NihAfZynHrTtYPH8ZSUEhLSCVMstLSV5qN?_rsc=baseline",
+      "headers": {
+        "rsc": "1"
+      },
+      "contentType": "text/x-component"
+    },
+    {
+      "name": "address-rsc-1",
+      "path": "/address/NLWUpSYydSUWN78A5noyttLpFk9N3w1QhR?_rsc=baseline",
+      "headers": {
+        "rsc": "1"
+      },
+      "contentType": "text/x-component"
+    },
+    {
+      "name": "address-rsc-2",
+      "path": "/address/NeFHag8Gos1TziUhepnx3hRDg9S4wQTSNg?_rsc=baseline",
+      "headers": {
+        "rsc": "1"
+      },
+      "contentType": "text/x-component"
+    },
+    {
+      "name": "address-page-rsc",
+      "path": "/address/NihAfZynHrTtYPH8ZSUEhLSCVMstLSV5qN?page=20&_rsc=baseline",
+      "headers": {
+        "rsc": "1"
+      },
+      "contentType": "text/x-component"
+    },
+    {
+      "name": "statistics-rsc",
+      "path": "/stats?_rsc=baseline",
+      "headers": {
+        "rsc": "1"
+      },
+      "contentType": "text/x-component"
+    },
+    {
+      "name": "history-api",
+      "path": "/api/stats/history",
+      "headers": {},
+      "contentType": "application/json"
+    }
+  ]
+}

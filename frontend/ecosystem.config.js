@@ -3,6 +3,7 @@ module.exports = {
     {
       name: 'neurai-explorer-frontend',
       script: 'server.js',
+      node_args: '--require ./diagnostics/runtime.cjs',
       instances: '4', // Number of CPU cores to utilize
       exec_mode: 'cluster',
       env: {

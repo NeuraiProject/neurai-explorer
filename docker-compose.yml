@@ -169,6 +169,10 @@ services:
       NEURAI_RPC_URL: http://node:19001
       NEURAI_RPC_USER: ${RPC_USER:-neuraiuser}
       NEURAI_RPC_PASSWORD: ${RPC_PASS:-neuraipassword}
+      # Optional per-worker measurement. Disabled by default; see tools/cpu/README.md.
+      EXPLORER_METRICS: ${EXPLORER_METRICS:-0}
+      EXPLORER_METRICS_INTERVAL_MS: ${EXPLORER_METRICS_INTERVAL_MS:-10000}
+      EXPLORER_CPU_PROFILE_MS: ${EXPLORER_CPU_PROFILE_MS:-60000}
     depends_on:
       postgres:
         condition: service_healthy
