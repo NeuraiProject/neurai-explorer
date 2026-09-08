@@ -2,7 +2,7 @@
     "api": {
         "baseUrl": "/api",
         "timeout": 10000,
-        "retryAttempts": 3,
+        "retryAttempts": 2,
         "retryDelay": 1000
     },
     "site": {

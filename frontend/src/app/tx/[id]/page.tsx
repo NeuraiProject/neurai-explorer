@@ -27,7 +27,7 @@ export default function TxPage() {
 
     const { data: tx, isLoading, error } = useQuery({
         queryKey: ['tx', txid],
-        queryFn: () => api.getTx(txid),
+        queryFn: ({ signal }) => api.getTx(txid, { signal }),
         enabled: !!txid
     });
 

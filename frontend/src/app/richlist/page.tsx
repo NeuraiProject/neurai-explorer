@@ -9,7 +9,7 @@ import Link from 'next/link';
 export default function RichListPage() {
     const { data: richlist, isLoading, error } = useQuery({
         queryKey: ['richlist'],
-        queryFn: () => api.getRichList(100)
+        queryFn: ({ signal }) => api.getRichList(100, { signal })
     });
 
     if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading Rich List...</div>;

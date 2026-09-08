@@ -2,8 +2,37 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { getBlockJson } from '@/lib/services/block';
 import { getDistribution, getSupply } from '@/lib/services/supply';
+import {
+    InvalidParamError,
+    LIMITS,
+    isValidAddress,
+    isValidBlockHash,
+    isValidTxid,
+    parseDecimalParam,
+    parseIntParam,
+    parseOffsetParam,
+    parseSizeParam,
+} from '@/lib/validation';
 
 // We removed rpcCall import. Everything must come from DB or external APIs (e.g. coingecko)
+
+const PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd,btc';
+const PRICE_TIMEOUT_MS = 5000;
+type PriceQuote = { neurai?: { usd?: number; btc?: number } };
+
+/**
+ * External price with a hard timeout. A slow or failing third party must not
+ * pin a worker: any problem degrades to a zero price, never to a 500.
+ */
+async function fetchPrice(): Promise<PriceQuote> {
+    try {
+        const res = await fetch(PRICE_URL, { signal: AbortSignal.timeout(PRICE_TIMEOUT_MS) });
+        if (!res.ok) return {};
+        return (await res.json()) as PriceQuote;
+    } catch {
+        return {};
+    }
+}
 
 export async function GET(
     request: Request,
@@ -39,8 +68,9 @@ export async function GET(
             case 'getblockhash': {
                 const index = queryParams.index || args[0];
                 if (!index) return NextResponse.json({ error: 'Missing index' }, { status: 400 });
+                const height = parseIntParam('index', index, { min: 0, max: LIMITS.BLOCK_HEIGHT_MAX });
                 const block = await prisma.block.findUnique({
-                    where: { height: parseInt(index) },
+                    where: { height },
                     select: { hash: true }
                 });
                 if (!block?.hash) return NextResponse.json({ error: 'Block not found' }, { status: 404 });
@@ -49,6 +79,7 @@ export async function GET(
             case 'getblock': {
                 const hash = queryParams.hash || args[0];
                 if (!hash) return NextResponse.json({ error: 'Missing hash' }, { status: 400 });
+                if (!isValidBlockHash(hash)) return NextResponse.json({ error: 'Invalid hash' }, { status: 400 });
                 const block = await getBlockJson({ hash });
                 if (!block) return NextResponse.json({ error: 'Block not found' }, { status: 404 });
                 return NextResponse.json(block);
@@ -57,6 +88,7 @@ export async function GET(
                 const txid = queryParams.txid || args[0];
                 const decrypt = queryParams.decrypt === '1' ? 1 : 0;
                 if (!txid) return NextResponse.json({ error: 'Missing txid' }, { status: 400 });
+                if (!isValidTxid(txid)) return NextResponse.json({ error: 'Invalid txid' }, { status: 400 });
 
                 // 1. Check Mined Txs (raw bytes live in their own column since schema v4)
                 const mined = await prisma.transaction.findUnique({
@@ -107,6 +139,7 @@ export async function GET(
             case 'getaddress': {
                 const addr = args[0] || queryParams.address;
                 if (!addr) return NextResponse.json({ error: 'Missing address' }, { status: 400 });
+                if (!isValidAddress(addr)) return NextResponse.json({ error: 'Invalid address' }, { status: 400 });
                 const address = await prisma.address.findUnique({ where: { address: addr } });
                 if (!address) return NextResponse.json({ error: 'Address not found' }, { status: 404 });
                 return NextResponse.json({
@@ -118,10 +151,15 @@ export async function GET(
                 });
             }
             case 'getaddresstxs': {
+                // Iquidus contract: /getaddresstxs/<address>/<start>/<length>.
+                // Both numbers are validated BEFORE Prisma: `length` is capped at
+                // TX_BATCH_MAX rows (each row carries the full transaction JSON)
+                // and `start` may not exceed SKIP_MAX; deeper history needs cursors.
                 const addr = args[0];
-                const start = parseInt(args[1] || '0');
-                const length = parseInt(args[2] || '50');
                 if (!addr) return NextResponse.json({ error: 'Missing address' }, { status: 400 });
+                if (!isValidAddress(addr)) return NextResponse.json({ error: 'Invalid address' }, { status: 400 });
+                const start = parseOffsetParam('start', args[1]);
+                const length = parseSizeParam('length', args[2], 50, LIMITS.TX_BATCH_MAX);
 
                 const txAddresses = await prisma.txAddress.findMany({
                     where: { address: addr },
@@ -136,6 +174,7 @@ export async function GET(
             case 'gettx': {
                 const txid = args[0];
                 if (!txid) return NextResponse.json({ error: 'Missing txid' }, { status: 400 });
+                if (!isValidTxid(txid)) return NextResponse.json({ error: 'Invalid txid' }, { status: 400 });
 
                 let tx = await prisma.transaction.findUnique({
                     where: { txid },
@@ -155,7 +194,9 @@ export async function GET(
             }
             case 'getbalance': {
                 const addr = args[0];
-                if (!addr) return new NextResponse('0', { headers: { 'Content-Type': 'text/plain' } });
+                // Iquidus clients expect "0" for anything unknown; a malformed
+                // address is unknown by definition and never reaches the DB.
+                if (!addr || !isValidAddress(addr)) return new NextResponse('0', { headers: { 'Content-Type': 'text/plain' } });
                 const address = await prisma.address.findUnique({
                     where: { address: addr },
                     select: { balance: true }
@@ -164,9 +205,9 @@ export async function GET(
                 return new NextResponse(balance, { headers: { 'Content-Type': 'text/plain' } });
             }
             case 'getlasttxs': {
-                const min = parseFloat(args[0] || '0');
-                const start = parseInt(args[1] || '0');
-                const length = Math.min(parseInt(args[2] || '100'), 100);
+                const min = parseDecimalParam('min', args[0], 0);
+                const start = parseOffsetParam('start', args[1]);
+                const length = parseSizeParam('length', args[2], 100, LIMITS.PAGINATION_MAX);
 
                 const txs = await prisma.transaction.findMany({
                     where: { totalOutput: { gte: min } },
@@ -178,8 +219,7 @@ export async function GET(
                 return NextResponse.json(txs.map(r => r.rawData));
             }
             case 'getcurrentprice': {
-                const gecko = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd,btc');
-                const data = await gecko.json();
+                const data = await fetchPrice();
                 return NextResponse.json({ last_price_btc: data.neurai?.btc || 0, last_price_usd: data.neurai?.usd || 0 });
             }
             case 'getbasicstats':
@@ -187,7 +227,7 @@ export async function GET(
                 const [stats, supplyInfo, priceRes] = await Promise.all([
                     prisma.networkStats.findUnique({ where: { id: 1 } }),
                     getSupply(),
-                    fetch('https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd,btc').then(r => r.json()).catch(() => ({}))
+                    fetchPrice()
                 ]);
 
                 return NextResponse.json({
@@ -206,8 +246,12 @@ export async function GET(
                 return NextResponse.json({ error: `Unknown command: ${command}` }, { status: 404 });
         }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
+        if (error instanceof InvalidParamError) {
+            return NextResponse.json({ error: error.message, param: error.param }, { status: 400 });
+        }
         console.error(`API Error [${command}]:`, error);
-        return NextResponse.json({ error: error.message || 'Internal Server Error' }, { status: 500 });
+        const message = error instanceof Error && error.message ? error.message : 'Internal Server Error';
+        return NextResponse.json({ error: message }, { status: 500 });
     }
 }

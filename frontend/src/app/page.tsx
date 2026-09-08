@@ -61,7 +61,7 @@ function RecentBlocks() {
 
   const { data: blocks, isLoading } = useQuery({
     queryKey: ['latestBlocks', skip],
-    queryFn: () => api.getLatestBlocks(limit, skip),
+    queryFn: ({ signal }) => api.getLatestBlocks(limit, skip, { signal }),
     refetchInterval: config.ui.pollingInterval,
     staleTime: config.ui.pollingInterval / 2,
   });
@@ -120,7 +120,7 @@ function RecentTransactions() {
 
   const { data: txs, isLoading } = useQuery({
     queryKey: ['latestTxs', skip],
-    queryFn: () => api.getLatestTxs(limit, skip),
+    queryFn: ({ signal }) => api.getLatestTxs(limit, skip, undefined, { signal }),
     refetchInterval: config.ui.pollingInterval,
     staleTime: config.ui.pollingInterval / 2,
   });

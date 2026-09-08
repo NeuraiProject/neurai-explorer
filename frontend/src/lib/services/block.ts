@@ -1,4 +1,5 @@
 import prisma from '@/lib/db';
+import { parseBlockId } from '@/lib/validation';
 import { confirmationsAt, getChainTip } from '@/lib/services/chain';
 
 /**
@@ -47,6 +48,10 @@ export async function getBlockJson(where: { hash: string } | { height: number })
 }
 
 /** Where-clause for a block id that is either a height or a 64-char hash. */
-export function blockWhere(id: string): { hash: string } | { height: number } {
-    return id.length === 64 ? { hash: id } : { height: parseInt(id, 10) };
+/**
+ * Strict locator: 64-hex hash or plain decimal height. Returns null for
+ * anything else ("123abc" used to be read as height 123 by parseInt).
+ */
+export function blockWhere(id: string): { hash: string } | { height: number } | null {
+    return parseBlockId(id);
 }

@@ -71,18 +71,28 @@ export function getRateLimitHeaders(ip: string, limit = 100): Record<string, str
 }
 
 /**
- * Extract client IP from request headers
+ * Extract client IP from request headers.
+ *
+ * nginx sets `X-Real-IP` from `$remote_addr`, which the realip module has
+ * already restored from Cloudflare's `CF-Connecting-IP`; that header is
+ * overwritten by our own proxy and cannot be forged by the client. The FIRST
+ * `X-Forwarded-For` value, on the contrary, is whatever the client sent, so
+ * only the LAST one (appended by nginx via `$proxy_add_x_forwarded_for`) is
+ * trusted, and only as a fallback.
  * @param request - Incoming request
  * @returns Client IP address
  */
 export function getClientIp(request: Request): string {
+    const realIp = request.headers.get('x-real-ip')?.trim();
+    if (realIp) return realIp;
+
+    const cfIp = request.headers.get('cf-connecting-ip')?.trim();
+    if (cfIp) return cfIp;
+
     const forwarded = request.headers.get('x-forwarded-for');
     if (forwarded) {
-        return forwarded.split(',')[0].trim();
-    }
-    const realIp = request.headers.get('x-real-ip');
-    if (realIp) {
-        return realIp;
+        const hops = forwarded.split(',').map(h => h.trim()).filter(Boolean);
+        if (hops.length) return hops[hops.length - 1];
     }
     return 'anonymous';
 }

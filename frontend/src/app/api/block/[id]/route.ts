@@ -5,8 +5,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     try {
         const { id } = await params;
 
-        // Neurai block hashes are 64 chars; anything else is a height
-        const block = await getBlockJson(blockWhere(id));
+        // Neurai block hashes are 64 chars; anything else must be a plain height
+        const where = blockWhere(id);
+        if (!where) {
+            return NextResponse.json({ error: 'Invalid block id: expected a 64-hex hash or a height' }, { status: 400 });
+        }
+        const block = await getBlockJson(where);
 
         if (!block) {
             return NextResponse.json({ error: 'Block not found' }, { status: 404 });

@@ -4,6 +4,7 @@
  */
 
 import config from '../config.json';
+import { fetchJson } from './http';
 import type {
     Block,
     BlockSummary,
@@ -57,83 +58,37 @@ const getBaseUrl = () => {
 
 const API_URL = getBaseUrl();
 
-// API configuration with defaults
+// API configuration with defaults. `retryAttempts` is the number of Query
+// retries (see providers.tsx); the fetcher itself never retries.
 const API_CONFIG = {
     timeout: config.api.timeout ?? 10000,
-    retryAttempts: config.api.retryAttempts ?? 3,
+    retryAttempts: config.api.retryAttempts ?? 2,
     retryDelay: config.api.retryDelay ?? 1000,
 };
 
-/**
- * Custom API error with status code
- */
-export class ApiError extends Error {
-    constructor(public status: number, message: string) {
-        super(message);
-        this.name = 'ApiError';
-    }
+export { ApiError, TimeoutError, isRetryableError, getRetryDelayMs } from './http';
+
+/** Single retry policy, consumed by the QueryClient in providers.tsx */
+export const RETRY_POLICY = {
+    attempts: API_CONFIG.retryAttempts,
+    baseDelayMs: API_CONFIG.retryDelay,
+} as const;
+
+export interface RequestOptions {
+    /** TanStack Query passes its per-query signal so abandoned requests are cancelled */
+    signal?: AbortSignal;
+    timeout?: number;
 }
 
 /**
- * Sleep utility for retry delay
+ * Generic fetcher: timeout covering the body read, cancellation, typed errors.
+ * No retry loop here on purpose, see lib/http.ts.
  */
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-/**
- * Generic fetcher with timeout, retry, and error handling
- */
-const fetcher = async <T>(
-    endpoint: string,
-    options?: {
-        timeout?: number;
-        retries?: number;
-    }
-): Promise<T> => {
-    const {
-        timeout = API_CONFIG.timeout,
-        retries = API_CONFIG.retryAttempts,
-    } = options ?? {};
-
-    let lastError: Error | null = null;
-
-    for (let attempt = 0; attempt <= retries; attempt++) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-            const res = await fetch(`${API_URL}${endpoint}`, {
-                signal: controller.signal,
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!res.ok) {
-                throw new ApiError(res.status, `API Error: ${res.status} ${res.statusText}`);
-            }
-
-            return res.json();
-        } catch (error) {
-            lastError = error as Error;
-
-            // Don't retry on 4xx client errors
-            if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
-                throw error;
-            }
-
-            // Don't retry on abort (timeout)
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                throw new Error(`Request timeout after ${timeout}ms`);
-            }
-
-            // Retry with exponential backoff
-            if (attempt < retries) {
-                await sleep(API_CONFIG.retryDelay * (attempt + 1));
-            }
-        }
-    }
-
-    throw lastError || new Error('Unknown API error');
-};
+const fetcher = <T>(endpoint: string, options?: RequestOptions): Promise<T> =>
+    fetchJson<T>(`${API_URL}${endpoint}`, {
+        timeoutMs: options?.timeout ?? API_CONFIG.timeout,
+        signal: options?.signal,
+    });
 
 // Pagination limits from config
 const MAX_LIMIT = config.ui.pagination?.maxLimit ?? 100;
@@ -145,33 +100,33 @@ const HOMEPAGE_LIMIT = config.ui.pagination?.homepageLimit ?? 10;
  */
 export const api = {
     // System status
-    getStatus: () => fetcher<SystemInfo>('/status'),
+    getStatus: (opts?: RequestOptions) => fetcher<SystemInfo>('/status', opts),
 
     // Block endpoints
-    getBlock: (hashOrHeight: string | number) => fetcher<Block>(`/block/${hashOrHeight}`),
-    getLatestBlocks: (limit = HOMEPAGE_LIMIT, skip = 0) =>
-        fetcher<BlockSummary[]>(`/blocks?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}`),
+    getBlock: (hashOrHeight: string | number, opts?: RequestOptions) => fetcher<Block>(`/block/${hashOrHeight}`, opts),
+    getLatestBlocks: (limit = HOMEPAGE_LIMIT, skip = 0, opts?: RequestOptions) =>
+        fetcher<BlockSummary[]>(`/blocks?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}`, opts),
 
     // Transaction endpoints
-    getTx: (txid: string) => fetcher<Transaction>(`/tx/${txid}`),
-    getLatestTxs: (limit = config.ui.latestTxsLimit, skip = 0, minTotalOutput?: number) => {
+    getTx: (txid: string, opts?: RequestOptions) => fetcher<Transaction>(`/tx/${txid}`, opts),
+    getLatestTxs: (limit = config.ui.latestTxsLimit, skip = 0, minTotalOutput?: number, opts?: RequestOptions) => {
         const minParam = typeof minTotalOutput === 'number' ? `&minTotalOutput=${minTotalOutput}` : '';
-        return fetcher<Transaction[]>(`/txs?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}${minParam}`);
+        return fetcher<Transaction[]>(`/txs?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}${minParam}`, opts);
     },
 
     // Address endpoints
-    getAddress: (address: string, page = 1, pageSize = config.ui.itemsPerPage) =>
-        fetcher<Address>(`/address/${address}?page=${page}&pageSize=${Math.min(pageSize, MAX_LIMIT)}`),
-    getUtxo: (address: string) => fetcher<unknown[]>(`/utxo/${address}`),
+    getAddress: (address: string, page = 1, pageSize = config.ui.itemsPerPage, opts?: RequestOptions) =>
+        fetcher<Address>(`/address/${address}?page=${page}&pageSize=${Math.min(pageSize, MAX_LIMIT)}`, opts),
+    getUtxo: (address: string, opts?: RequestOptions) => fetcher<unknown[]>(`/utxo/${address}`, opts),
 
     // Rich list
-    getRichList: (limit = config.ui.richListLimit) =>
-        fetcher<RichListEntry[]>(`/richlist?limit=${Math.min(limit, 500)}`),
+    getRichList: (limit = config.ui.richListLimit, opts?: RequestOptions) =>
+        fetcher<RichListEntry[]>(`/richlist?limit=${Math.min(limit, 500)}`, opts),
 
     // Network
-    getPeers: () => fetcher<Peer[]>('/peers'),
+    getPeers: (opts?: RequestOptions) => fetcher<Peer[]>('/peers', opts),
 
     // Assets
-    getLatestAssets: (limit = DEFAULT_LIMIT, skip = 0) =>
-        fetcher<ApiAsset[]>(`/assets?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}`),
+    getLatestAssets: (limit = DEFAULT_LIMIT, skip = 0, opts?: RequestOptions) =>
+        fetcher<ApiAsset[]>(`/assets?limit=${Math.min(limit, MAX_LIMIT)}&skip=${skip}`, opts),
 };

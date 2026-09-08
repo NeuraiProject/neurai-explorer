@@ -1,4 +1,5 @@
 import prisma from '@/lib/db';
+import { assertPagination } from '@/lib/validation';
 
 import { Transaction } from "@/types";
 
@@ -21,6 +22,9 @@ export interface AddressData {
  * from `tx_address_assets`), so callers do not need to walk vin/vout.
  */
 export async function getAddressData(address: string, page: number = 1, pageSize: number = 50): Promise<AddressData | null> {
+    // Enforced here too, not only in the routes: RSC pages call this directly.
+    // Throws InvalidParamError (outside the try below, so callers see it).
+    const { offset } = assertPagination(page, pageSize);
     try {
         // 1. Get Address Summary
         const addrData = await prisma.address.findUnique({
@@ -42,7 +46,6 @@ export async function getAddressData(address: string, page: number = 1, pageSize
         }
 
         // 2. Get Transactions (History): tx_count counts exactly these rows
-        const offset = (page - 1) * pageSize;
         const txAddresses = await prisma.txAddress.findMany({
             where: { address },
             orderBy: [{ time: 'desc' }, { txid: 'asc' }],

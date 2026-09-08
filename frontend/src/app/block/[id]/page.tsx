@@ -16,7 +16,7 @@ export default function BlockPage() {
 
     const { data: block, isLoading, error } = useQuery({
         queryKey: ['block', hashOrHeight],
-        queryFn: () => api.getBlock(hashOrHeight),
+        queryFn: ({ signal }) => api.getBlock(hashOrHeight, { signal }),
         enabled: !!hashOrHeight
     });
 

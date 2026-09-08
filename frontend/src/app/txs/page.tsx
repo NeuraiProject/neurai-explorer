@@ -21,7 +21,7 @@ export default function TransactionsPage() {
 
     const { data: txs, isLoading } = useQuery({
         queryKey: queryKeys.transactions.list(skip, minTotalOutput),
-        queryFn: () => api.getLatestTxs(limit, skip, minTotalOutput),
+        queryFn: ({ signal }) => api.getLatestTxs(limit, skip, minTotalOutput, { signal }),
         refetchInterval: config.ui.pollingInterval,
         staleTime: config.ui.pollingInterval / 2,
     });

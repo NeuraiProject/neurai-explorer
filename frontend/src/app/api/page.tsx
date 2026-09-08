@@ -119,6 +119,7 @@ export default function ApiDocs() {
                     />
                     <ApiMethod
                         title="getaddresstxs (/api/getaddresstxs/hash/start/length)"
+                        note="length: 1-1000 (values above are capped at 1000). start: 0-100000. Non-integer values return 400."
                         description="Returns last [length] transactions for address [hash], starting from offset [start]"
                         links={[{ href: "/api/getaddresstxs/NTCMHK3knrM33q4KZvMndEGN34knkomv6t/0/50", label: "/api/getaddresstxs/NTCMHK3knrM33q4KZvMndEGN34knkomv6t/0/50" }]}
                     />

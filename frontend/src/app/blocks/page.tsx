@@ -17,7 +17,7 @@ export default function BlocksPage() {
 
     const { data: blocks, isLoading } = useQuery({
         queryKey: queryKeys.blocks.list(skip),
-        queryFn: () => api.getLatestBlocks(limit, skip),
+        queryFn: ({ signal }) => api.getLatestBlocks(limit, skip, { signal }),
         refetchInterval: config.ui.pollingInterval
     });
 

@@ -6,14 +6,34 @@ import Link from 'next/link';
 import { AddressAsset, Transaction, TransactionInput, TransactionOutput, Address } from "@/types";
 import { formatSats, satsOf, sumAmounts } from "@/lib/utils";
 import { Amount } from "@/components/ui/Amount";
+import { InvalidParamError, assertPagination, isValidAddress, parseIntParam } from "@/lib/validation";
 
 export const dynamic = 'force-dynamic';
+
+const PAGE_SIZE = 50;
 
 export default async function AddressPage({ params, searchParams }: { params: Promise<{ address: string }>, searchParams: Promise<{ page?: string }> }) {
     const { address } = await params;
     const { page: pageParam } = await searchParams;
-    const page = parseInt(pageParam || '1');
     const addrStr = address;
+
+    // Everything below hits the DB, so reject bad input first: a malformed
+    // address, a non-integer page, or a page deeper than the offset limit.
+    if (!isValidAddress(addrStr)) {
+        return <div className="text-center p-8 text-destructive">Invalid address.</div>;
+    }
+    let page: number;
+    try {
+        page = assertPagination(
+            parseIntParam('page', pageParam, { default: 1, min: 1, max: Number.MAX_SAFE_INTEGER }),
+            PAGE_SIZE,
+        ).page;
+    } catch (e) {
+        if (e instanceof InvalidParamError) {
+            return <div className="text-center p-8 text-destructive">{e.message}.</div>;
+        }
+        throw e;
+    }
 
     let addr: Address | null = null;
     let assetBalances: AddressAsset[] = [];
@@ -21,7 +41,7 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
     // Parallel data fetching
     try {
         const [addrData, assetsRes] = await Promise.all([
-            getAddressData(addrStr, page, 50),
+            getAddressData(addrStr, page, PAGE_SIZE),
             prisma.addressAsset.findMany({
                 where: {
                     address: addrStr,

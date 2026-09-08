@@ -7,10 +7,124 @@ export const LIMITS = {
     PAGINATION_MAX: 100,
     PAGINATION_DEFAULT: 20,
     RICHLIST_MAX: 500,
+    /** Deepest offset any listing may reach; deeper history needs cursors */
     SKIP_MAX: 100000,
+    /** Most transactions one Iquidus-style history call (getaddresstxs) may return */
+    TX_BATCH_MAX: 1000,
     INPUT_MAX_LENGTH: 256,
     BLOCK_HEIGHT_MAX: 100_000_000,
 } as const;
+
+/**
+ * Thrown by the strict parsers below. API routes map it to a 400 response and
+ * pages to an explicit "invalid parameter" state, without touching the DB.
+ */
+export class InvalidParamError extends Error {
+    readonly param: string;
+
+    constructor(param: string, message: string) {
+        super(message);
+        this.name = 'InvalidParamError';
+        this.param = param;
+    }
+}
+
+export interface IntParamOptions {
+    /** Value used when the parameter is absent; without it, absence is an error */
+    default?: number;
+    min: number;
+    max: number;
+    /**
+     * Sizes (limit/length/pageSize) clamp to `max` so existing clients asking
+     * for more keep working. Offsets never clamp: silently moving the window
+     * would return the wrong rows.
+     */
+    clampMax?: boolean;
+}
+
+/**
+ * Parse a strict integer: ASCII digits only (optional leading '-'), no
+ * prefixes like "123abc", no NaN, no floats, within the safe-integer range.
+ */
+export function parseIntParam(name: string, raw: string | null | undefined, opts: IntParamOptions): number {
+    if (raw === null || raw === undefined || raw === '') {
+        if (opts.default !== undefined) return opts.default;
+        throw new InvalidParamError(name, `Missing ${name}`);
+    }
+    if (!/^-?\d{1,16}$/.test(raw)) {
+        throw new InvalidParamError(name, `Invalid ${name}: must be an integer`);
+    }
+    const value = Number(raw);
+    if (!Number.isSafeInteger(value)) {
+        throw new InvalidParamError(name, `Invalid ${name}: out of range`);
+    }
+    if (value < opts.min) {
+        throw new InvalidParamError(name, `Invalid ${name}: must be >= ${opts.min}`);
+    }
+    if (value > opts.max) {
+        if (opts.clampMax) return opts.max;
+        throw new InvalidParamError(name, `Invalid ${name}: must be <= ${opts.max}`);
+    }
+    return value;
+}
+
+/** Row offset: 0..SKIP_MAX, never clamped */
+export function parseOffsetParam(name: string, raw: string | null | undefined, defaultValue = 0): number {
+    return parseIntParam(name, raw, { default: defaultValue, min: 0, max: LIMITS.SKIP_MAX });
+}
+
+/** Page size / batch length: 1..max, clamped to max */
+export function parseSizeParam(name: string, raw: string | null | undefined, defaultValue: number, max: number): number {
+    return parseIntParam(name, raw, { default: defaultValue, min: 1, max, clampMax: true });
+}
+
+/**
+ * Non-negative decimal amount such as the `min` of getlasttxs. Accepts
+ * "100", "0.5"; rejects "-1", "1e9", "abc", "Infinity".
+ */
+export function parseDecimalParam(name: string, raw: string | null | undefined, defaultValue: number): number {
+    if (raw === null || raw === undefined || raw === '') return defaultValue;
+    if (!/^\d{1,20}(\.\d{1,12})?$/.test(raw)) {
+        throw new InvalidParamError(name, `Invalid ${name}: must be a non-negative number`);
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+        throw new InvalidParamError(name, `Invalid ${name}: out of range`);
+    }
+    return value;
+}
+
+export interface PageParams {
+    page: number;
+    pageSize: number;
+    /** (page - 1) * pageSize, guaranteed <= SKIP_MAX */
+    offset: number;
+}
+
+/**
+ * Bound the offset a page-based listing computes, not just the page number:
+ * page=2000 with pageSize=50 is exactly as deep as page=100000 with pageSize=1.
+ */
+export function assertPagination(page: number, pageSize: number): PageParams {
+    if (!Number.isSafeInteger(page) || page < 1) {
+        throw new InvalidParamError('page', 'Invalid page: must be >= 1');
+    }
+    if (!Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > LIMITS.PAGINATION_MAX) {
+        throw new InvalidParamError('pageSize', `Invalid pageSize: must be 1..${LIMITS.PAGINATION_MAX}`);
+    }
+    const offset = (page - 1) * pageSize;
+    if (offset > LIMITS.SKIP_MAX) {
+        throw new InvalidParamError('page', `Invalid page: history beyond ${LIMITS.SKIP_MAX} rows is not browsable by page`);
+    }
+    return { page, pageSize, offset };
+}
+
+/** `?page=&pageSize=` for address-style listings */
+export function parsePageParams(searchParams: URLSearchParams, defaults?: { pageSize?: number }): PageParams {
+    const page = parseIntParam('page', searchParams.get('page'), { default: 1, min: 1, max: Number.MAX_SAFE_INTEGER });
+    const pageSize = parseSizeParam('pageSize', searchParams.get('pageSize'), defaults?.pageSize ?? 50, LIMITS.PAGINATION_MAX);
+    return assertPagination(page, pageSize);
+}
 
 /**
  * Validate and sanitize pagination parameters
@@ -73,6 +187,20 @@ export function isValidAddress(address: string): boolean {
 export function isValidBlockHeight(height: string | number): boolean {
     const num = typeof height === 'string' ? parseInt(height, 10) : height;
     return !isNaN(num) && num >= 0 && num <= LIMITS.BLOCK_HEIGHT_MAX;
+}
+
+/**
+ * Strict block locator: a 64-hex hash or a plain decimal height. Unlike
+ * `parseInt`, "123abc" is rejected instead of being read as height 123.
+ */
+export function parseBlockId(id: string): { hash: string } | { height: number } | null {
+    if (!id || typeof id !== 'string') return null;
+    if (isValidBlockHash(id)) return { hash: id };
+    if (/^\d{1,9}$/.test(id)) {
+        const height = Number(id);
+        if (height <= LIMITS.BLOCK_HEIGHT_MAX) return { height };
+    }
+    return null;
 }
 
 /**

@@ -16,7 +16,7 @@ export default function AssetsPage() {
 
     const { data: assets, isLoading } = useQuery<ApiAsset[]>({
         queryKey: ['assetsPage', skip],
-        queryFn: () => api.getLatestAssets(limit, skip),
+        queryFn: ({ signal }) => api.getLatestAssets(limit, skip, { signal }),
         refetchInterval: config.ui.pollingInterval,
         staleTime: config.ui.pollingInterval / 2,
     });
