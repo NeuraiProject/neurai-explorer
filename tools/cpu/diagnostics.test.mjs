@@ -91,6 +91,8 @@ test('runtime counts concurrent completions/aborts once and captures a CPU profi
     const http=require('node:http');
     const s=http.createServer((req,res)=>{
       if(req.url==='/abort'){res.write('partial');setTimeout(()=>res.destroy(),10);return;}
+      require('node:diagnostics_channel').channel('explorer.db.query').publish({duration_ms: 3});
+      res.setHeader('x-nextjs-cache', req.url==='/api/status'?'unexpected-private-value':'HIT');
       res.statusCode=req.url==='/api/status'?503:200;
       setTimeout(()=>res.end('ok'),5);
     }).listen(0,'127.0.0.1',()=>process.send(s.address().port));
@@ -107,7 +109,7 @@ test('runtime counts concurrent completions/aborts once and captures a CPU profi
   child.stderr.on('data', b => { errors += b; });
   const [port] = await once(child, 'message');
   const base = `http://127.0.0.1:${port}`;
-  await Promise.all(Array.from({ length: 20 }, (_, i) => requestOnce(base, { path: `/address/entity-${i}?secret=hidden`, headers: { rsc: '1' } })));
+  await Promise.all(Array.from({ length: 20 }, (_, i) => requestOnce(base, { path: `/address/entity-${i}?secret=hidden`, headers: { rsc: '1', ...(i < 10 ? { 'next-router-prefetch': '1' } : {}) } })));
   await requestOnce(base, { path: '/api/status' });
   await requestOnce(base, { path: '/abort' });
   child.kill('SIGUSR2');
@@ -122,8 +124,28 @@ test('runtime counts concurrent completions/aborts once and captures a CPU profi
   assert.equal(windows.reduce((n, r) => n + r.aborted, 0), 1);
   assert.equal(windows.at(-1).active, 0);
   assert.equal(windows.flatMap(w => w.routes).filter(r => r.key === 'GET rsc /address/*').reduce((n, r) => n + r.completed, 0), 20);
-  assert.doesNotMatch(output, /entity-|secret=|Debugger listening/);
-  const files = await readdir(directory);
+  assert.equal(windows.reduce((n, w) => n + w.db.queries, 0), 21);
+  assert.equal(windows.reduce((n, w) => n + w.db.duration_ms, 0), 63);
+  const routes = windows.flatMap(w => w.routes);
+  assert.equal(routes.reduce((n, r) => n + r.prefetch_hints, 0), 10);
+  assert.equal(routes.reduce((n, r) => n + (r.next_cache.HIT || 0), 0), 20);
+  assert.equal(routes.reduce((n, r) => n + (r.next_cache.UNREPORTED || 0), 0), 1);
+  assert.ok(windows.every(w => w.schema === 2 && w.event_loop.utilization >= 0 && w.event_loop.utilization <= 1));
+  assert.ok(windows.some(w => w.event_loop.delay_max_ms > 0));
+  assert.doesNotMatch(output, /entity-|secret=|unexpected-private-value|Debugger listening/);
+  const logFile = path.join(directory, 'metrics.log');
+  await writeFile(logFile, output);
+  const reportScript = fileURLToPath(new URL('./metrics-report.mjs', import.meta.url));
+  const reporter = spawn(process.execPath, [reportScript, '--log', logFile]);
+  let reportOutput = '';
+  reporter.stdout.on('data', b => { reportOutput += b; });
+  const [reportCode] = await once(reporter, 'exit');
+  assert.equal(reportCode, 0);
+  const report = JSON.parse(reportOutput);
+  assert.equal(report.workers[0].db.queries, 21);
+  assert.equal(report.workers[0].routes['GET rsc /address/*'].prefetch_hints, 10);
+  assert.equal(report.workers[0].routes['GET rsc /address/*'].next_cache.HIT, 20);
+  const files = (await readdir(directory)).filter(name => name.endsWith('.cpuprofile'));
   const profile = JSON.parse(await readFile(path.join(directory, files[0]), 'utf8'));
   assert.ok(profile.nodes.length > 0); assert.ok(profile.samples.length > 0);
 });

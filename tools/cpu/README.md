@@ -38,6 +38,36 @@ GC, and background tasks share the process. Use sufficiently long windows; do no
 average worker ratios or percentiles. The scripts sum CPU and counters before
 calculating ratios. Windows without completed responses return `null`.
 
+### Additional diagnostics (schema 2)
+
+With `EXPLORER_METRICS=1`, each worker also reports:
+
+- `db`: query count, summed duration and maximum duration from Prisma query events.
+  Durations are provider-reported elapsed milliseconds, not CPU, pool wait time or
+  end-to-end Prisma operation time. Parallel queries overlap. Counters are per
+  process, not per route. Never subtract them from latency to estimate rendering.
+  The diagnostic listener publishes no SQL or parameters.
+- `event_loop`: active/idle time, utilization and p95/max scheduling delay, sampled
+  at 20 ms resolution. Utilization is not CPU usage; synchronous I/O also keeps
+  the loop active. The report aggregates active/idle time and maximum delay,
+  without averaging window percentiles.
+- Per-route `prefetch_hints`: completed requests declaring Next router/segment
+  prefetch or Purpose/Sec-Purpose prefetch. These client-controlled hints do not
+  prove intent. Requests without hints may still be prefetches.
+- Per-route `next_cache`: completed responses with X-Nextjs-Cache equal to HIT,
+  MISS, STALE or REVALIDATED. Other values become UNREPORTED, which is not a miss.
+  This does not measure the Next Data Cache or nginx/CDN caches.
+
+Event emission and delay sampling add overhead: compare runs with identical
+instrumentation settings. Old logs remain supported; missing DB/event-loop metrics
+become null. Coverage counters distinguish old windows from measured zero values.
+
+After deploying this source revision through your normal workflow, rebuild and
+recreate the frontend using the commands above. This briefly interrupts service
+and changes worker PIDs. Confirm `"schema":2` in fresh logs, collect five minutes
+without profiling, then capture a separate CPU profile using the procedure below.
+No new ports or public endpoints are required.
+
 Disable instrumentation by setting `EXPLORER_METRICS=0` and recreating only the
 frontend. Outside PM2, the equivalent command is:
 
