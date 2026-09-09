@@ -253,3 +253,47 @@ The tests use local servers and cover complete streams, errors, timeouts,
 redirects, BYPASS/RSC classification, counters under concurrency and interrupted
 connections, absence of instrumentation when disabled, and generation of an
 actual CPU profile. The Docker build also validates startup through PM2.
+
+## Comparing the statistics data cache
+
+`/stats` uses `connection()` to defer database access until runtime and a 60-second
+`unstable_cache` around the query and serialized chart data. The page itself remains
+dynamic. The first request without cached data waits for the query. After expiration,
+requests can receive stale data while a refresh runs. Failed refreshes leave the last
+successful value intact; a cold failure propagates instead of caching an empty chart.
+The interval is not a hard freshness bound during inactivity, refreshes, or outages.
+Concurrent loads are coalesced per worker, not across containers or PM2 workers.
+Next controls Data Cache storage; a response without X-Nextjs-Cache does not mean
+this data cache missed. Inspect Prisma counters as well.
+
+For a local comparison, use separate baseline/candidate production containers with
+the same Node/PM2 configuration, database and metric settings. Run them sequentially.
+Use one route per workload so Docker CPU can be associated with that workload:
+
+```json
+{
+  "requests": [{
+    "name": "stats-navigation",
+    "path": "/stats",
+    "headers": { "RSC": "1" },
+    "contentType": "text/x-component"
+  }]
+}
+```
+
+Use `/api` as a cached-route control and a populated `/address/ADDRESS` as a dynamic
+control. Run three repetitions per route with 1,000 requests, concurrency 8, and
+100 warm-up requests using `measure.mjs`. Use a new output path for every repetition.
+Compare medians of CPU per response and report each run's errors and latency.
+These synthetic RSC requests do not include a browser router tree and are not a
+browser-navigation correctness test.
+
+Test prefetch separately with `Next-Router-Prefetch: 1`: dynamic routes can return
+only a small router payload without running the page query. Check body size/content,
+not only HTTP 200, before claiming to have measured the full page.
+
+Validate refresh/error behavior against an isolated database copy: warm the cache,
+change a statistic, verify it stays cached before 60 seconds and updates after
+revalidation, then make the test table unavailable and confirm stale data survives.
+Restore the table and verify a subsequent refresh succeeds. Never perform failure
+injection or data edits against the live explorer database.
