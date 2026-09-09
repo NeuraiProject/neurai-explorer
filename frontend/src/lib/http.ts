@@ -110,7 +110,7 @@ export function isRetryableError(error: unknown): boolean {
  */
 export function getRetryDelayMs(attempt: number, error: unknown, baseMs = 1000, maxMs = 30000): number {
     if (error instanceof ApiError && error.retryAfterMs !== undefined) {
-        return Math.min(error.retryAfterMs, maxMs);
+        return error.retryAfterMs;
     }
     return Math.min(baseMs * 2 ** Math.max(0, attempt), maxMs);
 }

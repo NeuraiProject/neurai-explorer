@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     if (!rateLimit(ip, maxRequests, windowMs)) {
         return NextResponse.json(
             { error: 'Rate limit exceeded' },
-            { status: 429, headers: getRateLimitHeaders(ip, maxRequests) }
+            { status: 429, headers: getRateLimitHeaders(ip, maxRequests, true) }
         );
     }
 

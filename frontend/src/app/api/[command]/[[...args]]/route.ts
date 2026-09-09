@@ -18,19 +18,29 @@ import {
 
 const PRICE_URL = 'https://api.coingecko.com/api/v3/simple/price?ids=neurai&vs_currencies=usd,btc';
 const PRICE_TIMEOUT_MS = 5000;
-type PriceQuote = { neurai?: { usd?: number; btc?: number } };
+type PriceQuote = { neurai: { usd: number; btc: number } };
 
-/**
- * External price with a hard timeout. A slow or failing third party must not
- * pin a worker: any problem degrades to a zero price, never to a 500.
- */
+class PriceUnavailableError extends Error {
+    constructor() {
+        super('Price temporarily unavailable');
+        this.name = 'PriceUnavailableError';
+    }
+}
+
+/** Bound provider latency and never represent a missing quote as a zero price. */
 async function fetchPrice(): Promise<PriceQuote> {
     try {
         const res = await fetch(PRICE_URL, { signal: AbortSignal.timeout(PRICE_TIMEOUT_MS) });
-        if (!res.ok) return {};
-        return (await res.json()) as PriceQuote;
+        if (!res.ok) throw new PriceUnavailableError();
+        const data = await res.json();
+        const quote = data?.neurai;
+        if (!quote || typeof quote.usd !== 'number' || !Number.isFinite(quote.usd) || quote.usd < 0
+            || typeof quote.btc !== 'number' || !Number.isFinite(quote.btc) || quote.btc < 0) {
+            throw new PriceUnavailableError();
+        }
+        return data as PriceQuote;
     } catch {
-        return {};
+        throw new PriceUnavailableError();
     }
 }
 
@@ -220,7 +230,7 @@ export async function GET(
             }
             case 'getcurrentprice': {
                 const data = await fetchPrice();
-                return NextResponse.json({ last_price_btc: data.neurai?.btc || 0, last_price_usd: data.neurai?.usd || 0 });
+                return NextResponse.json({ last_price_btc: data.neurai.btc, last_price_usd: data.neurai.usd });
             }
             case 'getbasicstats':
             case 'getsummary': {
@@ -238,8 +248,8 @@ export async function GET(
                     supply_source: supplyInfo.source,
                     supply_updated_at: supplyInfo.updatedAt,
                     connections: stats?.connections || 0,
-                    price_btc: priceRes.neurai?.btc || 0,
-                    price_usd: priceRes.neurai?.usd || 0
+                    price_btc: priceRes.neurai.btc,
+                    price_usd: priceRes.neurai.usd
                 });
             }
             default:
@@ -247,6 +257,12 @@ export async function GET(
         }
 
     } catch (error: unknown) {
+        if (error instanceof PriceUnavailableError) {
+            return NextResponse.json({ error: error.message }, {
+                status: 503,
+                headers: { 'Cache-Control': 'no-store' },
+            });
+        }
         if (error instanceof InvalidParamError) {
             return NextResponse.json({ error: error.message, param: error.param }, { status: 400 });
         }

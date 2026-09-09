@@ -25,3 +25,23 @@ test('only the LAST X-Forwarded-For hop is trusted, never the client-supplied fi
 test('no headers -> anonymous', () => {
     assert.equal(getClientIp(req({})), 'anonymous');
 });
+
+test('a blocked local request tells the HTTP client to wait until the window resets', async (t) => {
+    const { rateLimit, getRateLimitHeaders } = await import('../src/lib/rateLimit.ts');
+    const { fetchJson, getRetryDelayMs, ApiError } = await import('../src/lib/http.ts');
+    t.mock.timers.enable({ apis: ['Date'], now: 1000000 });
+    const key = 'retry-after-regression';
+    assert.equal(rateLimit(key, 1, 120000), true);
+    assert.equal(getRateLimitHeaders(key, 1)['Retry-After'], undefined);
+    assert.equal(rateLimit(key, 1, 120000), false);
+    t.mock.timers.tick(500);
+    const headers = getRateLimitHeaders(key, 1, true);
+    assert.equal(headers['Retry-After'], '120');
+    await assert.rejects(fetchJson('http://x/limited', {
+        fetchImpl: async () => new Response('{}', { status: 429, headers }),
+    }), (error) => error instanceof ApiError && getRetryDelayMs(0, error) === 120000);
+    t.mock.timers.tick(119500);
+    assert.equal(rateLimit(key, 1, 120000), true, 'the exact reset boundary starts a new window');
+    t.mock.timers.tick(120001);
+    assert.equal(getRateLimitHeaders(key, 1)['X-RateLimit-Reset'], '0');
+});

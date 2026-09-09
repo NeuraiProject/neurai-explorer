@@ -20,7 +20,7 @@ function cleanup() {
 
     lastCleanup = now;
     for (const [key, record] of rateLimitMap.entries()) {
-        if (now > record.resetTime) {
+        if (now >= record.resetTime) {
             rateLimitMap.delete(key);
         }
     }
@@ -39,7 +39,7 @@ export function rateLimit(ip: string, limit = 100, windowMs = 60000): boolean {
     const now = Date.now();
     const record = rateLimitMap.get(ip);
 
-    if (!record || now > record.resetTime) {
+    if (!record || now >= record.resetTime) {
         rateLimitMap.set(ip, { count: 1, resetTime: now + windowMs });
         return true;
     }
@@ -56,17 +56,19 @@ export function rateLimit(ip: string, limit = 100, windowMs = 60000): boolean {
  * Get rate limit headers for response
  * @param ip - Client IP address or identifier
  * @param limit - Maximum requests allowed
+ * @param blocked - Whether this response rejects a request with HTTP 429
  * @returns Headers object with rate limit info
  */
-export function getRateLimitHeaders(ip: string, limit = 100): Record<string, string> {
+export function getRateLimitHeaders(ip: string, limit = 100, blocked = false): Record<string, string> {
     const record = rateLimitMap.get(ip);
     const remaining = record ? Math.max(0, limit - record.count) : limit;
-    const reset = record ? Math.ceil((record.resetTime - Date.now()) / 1000) : 60;
+    const reset = record ? Math.max(0, Math.ceil((record.resetTime - Date.now()) / 1000)) : 60;
 
     return {
         'X-RateLimit-Limit': limit.toString(),
         'X-RateLimit-Remaining': remaining.toString(),
         'X-RateLimit-Reset': reset.toString(),
+        ...(blocked ? { 'Retry-After': reset.toString() } : {}),
     };
 }
 

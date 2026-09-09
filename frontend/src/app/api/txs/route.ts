@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/db';
 import { rateLimit, getClientIp, getRateLimitHeaders } from '@/lib/rateLimit';
-import { validatePaginationParams, parseNumericParam } from '@/lib/validation';
+import { validatePaginationParams } from '@/lib/validation';
 import config from '@/config.json';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     if (!rateLimit(ip, maxRequests, windowMs)) {
         return NextResponse.json(
             { error: 'Rate limit exceeded' },
-            { status: 429, headers: getRateLimitHeaders(ip, maxRequests) }
+            { status: 429, headers: getRateLimitHeaders(ip, maxRequests, true) }
         );
     }
 

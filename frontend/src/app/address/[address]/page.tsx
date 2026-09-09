@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { AddressAsset, Transaction, TransactionInput, TransactionOutput, Address } from "@/types";
 import { formatSats, satsOf, sumAmounts } from "@/lib/utils";
 import { Amount } from "@/components/ui/Amount";
-import { InvalidParamError, assertPagination, isValidAddress, parseIntParam } from "@/lib/validation";
+import { InvalidParamError, LIMITS, assertPagination, isValidAddress, parseIntParam } from "@/lib/validation";
 
 export const dynamic = 'force-dynamic';
 
@@ -93,6 +93,8 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
         const sign = sats > ZERO ? "+" : sats < ZERO ? "-" : "";
         return `${sign}${formatSats(sats < ZERO ? -sats : sats, { trim: true, grouping: true })}`;
     }
+
+    const browsablePages = Math.min(addr.totalPages || 0, Math.floor(LIMITS.SKIP_MAX / PAGE_SIZE) + 1);
 
     return (
         <div className="flex flex-col gap-8 container mx-auto px-4 py-8">
@@ -205,14 +207,20 @@ export default async function AddressPage({ params, searchParams }: { params: Pr
                 </div>
             </div>
 
+            {(addr.totalPages || 0) > browsablePages && (
+                <p className="mt-4 text-sm text-muted-foreground">
+                    Showing the most recent {browsablePages.toLocaleString('en-US')} pages of transaction history.
+                    Older transactions remain available by transaction ID.
+                </p>
+            )}
             <div className="flex justify-between items-center mt-4 bg-muted/20 p-4 rounded-lg">
                 {page > 1 ? (
                     <Link href={`/address/${addrStr}?page=${page - 1}`} prefetch={false} className="text-primary hover:underline">&larr; Previous</Link>
                 ) : <span className="text-muted-foreground pointer-events-none opacity-50">&larr; Previous</span>}
 
-                <span className="text-sm font-medium text-muted-foreground">Page {addr.page} of {addr.totalPages}</span>
+                <span className="text-sm font-medium text-muted-foreground">Page {addr.page} of {browsablePages}</span>
 
-                {page < (addr.totalPages || 0) ? (
+                {page < browsablePages ? (
                     <Link href={`/address/${addrStr}?page=${page + 1}`} prefetch={false} className="text-primary hover:underline">Next &rarr;</Link>
                 ) : <span className="text-muted-foreground pointer-events-none opacity-50">Next &rarr;</span>}
             </div>

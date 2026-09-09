@@ -39,7 +39,7 @@ test('429 carries Retry-After and drives the retry delay', async () => {
     assert.equal(err.retryAfterMs, 7000);
     assert.equal(isRetryableError(err), true);
     assert.equal(getRetryDelayMs(0, err), 7000);
-    assert.equal(getRetryDelayMs(0, err, 1000, 5000), 5000, 'Retry-After is capped');
+    assert.equal(getRetryDelayMs(0, err, 1000, 5000), 7000, 'Retry-After is not shortened by the backoff cap');
 });
 
 test('parseRetryAfter handles seconds and HTTP dates', () => {
